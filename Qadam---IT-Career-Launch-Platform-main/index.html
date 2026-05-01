@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Qadam — IT Career Launch Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    .profile-tab {
+      display: none;
+    }
+    .profile-tab.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+<div class="preloader" id="preloader"><div class="loader"></div></div>
+
+<header class="header" id="header">
+  <div class="container header__inner">
+    <div class="logo" onclick="showSection('home')">
+      <span class="logo__word">Qadam</span><span class="logo__dot">.</span>
+    </div>
+
+    <nav class="nav" id="mainNav">
+      <a class="nav__link active" onclick="showSection('home')"><i class="fas fa-home"></i> Home</a>
+      <a class="nav__link" onclick="showSection('internships')"><i class="fas fa-briefcase"></i> Internships</a>
+      <a class="nav__link" onclick="showSection('courses')"><i class="fas fa-book-open"></i> Courses</a>
+      <a class="nav__link" onclick="showSection('events')"><i class="fas fa-calendar-alt"></i> Events</a>
+      <a class="nav__link" onclick="showSection('resources')"><i class="fas fa-users"></i> Resources</a>
+    </nav>
+
+    <div style="display:flex;align-items:center;gap:.75rem;">
+      <div id="authButtons" class="header__auth">   
+        <button class="btn btn-ghost btn-small" onclick="openModal('login')"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+        <button class="btn btn-primary btn-small" onclick="openModal('register')">Sign Up <i class="fas fa-arrow-right"></i></button>
+      </div>
+
+      <div id="userMenu" class="user-chip hidden" onclick="toggleUserMenu()">
+        <div class="user-chip__avatar" id="userAvatar">U</div>
+        <span class="user-chip__name" id="userName">User</span>
+        <i class="fas fa-chevron-down user-chip__chevron"></i>
+        <div class="user-dropdown" id="userDropdown">
+          <a onclick="showSection('profile')"><i class="fas fa-user"></i><span>Profile</span></a>
+          <a onclick="showSection('saved')"><i class="fas fa-bookmark"></i><span>Saved</span></a>
+          <a onclick="showSection('applications')"><i class="fas fa-paper-plane"></i><span>Applications</span></a>
+          <div class="dropdown-divider"></div>
+          <a onclick="logout()" class="danger"><i class="fas fa-sign-out-alt"></i><span>Log Out</span></a>
+        </div>
+      </div>
+
+      <button class="mobile-menu-btn" onclick="toggleMobileMenu()"><i class="fas fa-bars"></i></button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="homeSection">
+    <section class="hero">
+      <div class="hero-particles" id="particles"></div>
+      <div class="container">
+        <div class="hero-content">
+          <div class="hero-badge animate-fade-in"><i class="fas fa-rocket"></i><span>Your first step into IT</span></div>
+          <h1 class="hero-title animate-slide-up">Build a successful career in <span class="gradient-text">IT</span></h1>
+          <p class="hero-description animate-slide-up">Qadam — a centralized platform to launch your career: internships, courses, events, and mentorship from top IT companies</p>
+          <div class="hero-stats animate-slide-up">
+            <div class="stat-item"><div class="stat-value" id="statInternships">6+</div><div class="stat-label">Internships</div></div>
+            <div class="stat-item"><div class="stat-value" id="statCompanies">6+</div><div class="stat-label">Companies</div></div>
+            <div class="stat-item"><div class="stat-value" id="statCourses">8+</div><div class="stat-label">Courses</div></div>
+            <div class="stat-item"><div class="stat-value" id="statEvents">4+</div><div class="stat-label">Events</div></div>
+          </div>
+          <div class="hero-actions animate-slide-up">
+            <button class="btn btn-primary btn-large" onclick="showSection('internships')"><span>Find internship</span><i class="fas fa-search"></i></button>
+            <button class="btn btn-outline btn-large" onclick="showSection('courses')"><span>Explore courses</span><i class="fas fa-graduation-cap"></i></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-subtitle">Why Qadam?</span>
+          <h2 class="section-title">Everything for your success</h2>
+          <p class="section-description">We've gathered everything you need to start an IT career on one platform</p>
+        </div>
+        <div class="features-grid">
+          <div class="feature-card"><div class="feature-icon"><i class="fas fa-briefcase"></i></div><h3>Internships</h3><p>Current internships from top IT companies with employment opportunities</p><a class="feature-link" onclick="showSection('internships')"><span>View positions</span><i class="fas fa-arrow-right"></i></a></div>
+          <div class="feature-card"><div class="feature-icon"><i class="fas fa-book-open"></i></div><h3>Courses</h3><p>Free and paid courses for all skill levels</p><a class="feature-link" onclick="showSection('courses')"><span>Choose course</span><i class="fas fa-arrow-right"></i></a></div>
+          <div class="feature-card"><div class="feature-icon"><i class="fas fa-calendar-alt"></i></div><h3>Events</h3><p>Hackathons, meetups, and workshops for networking and growth</p><a class="feature-link" onclick="showSection('events')"><span>Event calendar</span><i class="fas fa-arrow-right"></i></a></div>
+          <div class="feature-card"><div class="feature-icon"><i class="fas fa-users"></i></div><h3>Mentorship</h3><p>Personal guidance from experienced IT professionals</p><a class="feature-link" onclick="showSection('resources')"><span>Find a mentor</span><i class="fas fa-arrow-right"></i></a></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="popular-section">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-subtitle">Popular</span>
+          <h2 class="section-title">Hot internships</h2>
+          <p class="section-description">Most in-demand internships right now</p>
+        </div>
+        <div class="popular-grid" id="popularInternships"></div>
+        <div class="section-footer" style="margin-top:2rem;">
+          <button class="btn btn-outline" onclick="showSection('internships')"><span>All internships</span><i class="fas fa-arrow-right"></i></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="how-it-works">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-subtitle">Easy start</span>
+          <h2 class="section-title">How to begin?</h2>
+          <p class="section-description">Just 4 steps to your first IT job</p>
+        </div>
+        <div class="steps">
+          <div class="step"><div class="step-number">1</div><div class="step-content"><h3>Sign Up</h3><p>Create a profile and list your skills</p></div></div>
+          <div class="step"><div class="step-number">2</div><div class="step-content"><h3>Choose path</h3><p>Decide on an IT specialization</p></div></div>
+          <div class="step"><div class="step-number">3</div><div class="step-content"><h3>Learn</h3><p>Take courses and participate in events</p></div></div>
+          <div class="step"><div class="step-number">4</div><div class="step-content"><h3>Job search</h3><p>Apply for internships and get offers</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="testimonials">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-subtitle">Testimonials</span>
+          <h2 class="section-title">Success stories</h2>
+          <p class="section-description">Real stories of people who started their career with Qadam</p>
+        </div>
+        <div class="testimonials-slider" id="testimonialsSlider"></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="internshipsSection" class="hidden">
+    <section class="page-header"><div class="container"><h1>Internships</h1><p>Find the perfect internship among the best offers</p></div></section>
+    <div class="container">
+      <div class="search-section">
+        <div class="search-box">
+          <i class="fas fa-search"></i>
+          <input type="text" id="internshipSearch" placeholder="Search by title, company, skills..." oninput="debouncedSearch()">
+        </div>
+        <div class="filter-group">
+          <select id="cityFilter" class="filter-select"><option value="">All cities</option><option>Almaty</option><option>Astana</option><option>Shymkent</option><option>Remote</option></select>
+          <select id="directionFilter" class="filter-select"><option value="">All directions</option><option>Frontend</option><option>Backend</option><option>Mobile</option><option>QA</option><option>Data Science</option><option>DevOps</option><option>UX/UI</option></select>
+          <select id="salaryFilter" class="filter-select"><option value="">Any salary</option><option value="0-100000">up to 100,000 ₸</option><option value="100000-200000">100,000–200,000 ₸</option><option value="200000-300000">200,000–300,000 ₸</option><option value="300000+">from 300,000 ₸</option></select>
+          <button class="btn btn-primary" onclick="applyFilters()"><i class="fas fa-filter"></i><span>Apply</span></button>
+        </div>
+      </div>
+      <div class="results-header">
+        <div class="results-count" id="resultsCount"></div>
+        <div class="view-options">
+          <button class="view-option active" onclick="changeView('grid',this)"><i class="fas fa-th-large"></i></button>
+          <button class="view-option" onclick="changeView('list',this)"><i class="fas fa-list"></i></button>
+        </div>
+      </div>
+      <div id="internshipsContainer" class="internships-grid"></div>
+      <div class="load-more" id="loadMoreWrap"><button class="btn btn-outline" onclick="loadMoreInternships()"><span>Load more</span><i class="fas fa-chevron-down"></i></button></div>
+    </div>
+  </div>
+
+  <div id="coursesSection" class="hidden">
+    <section class="page-header"><div class="container"><h1>IT Courses</h1><p>Learn for free or choose premium courses</p></div></section>
+    <div class="container">
+      <div class="tabs">
+        <button class="tab active" onclick="filterCourses('all',this)">All courses</button>
+        <button class="tab" onclick="filterCourses('free',this)">Free</button>
+        <button class="tab" onclick="filterCourses('paid',this)">Paid</button>
+        <button class="tab" onclick="filterCourses('beginner',this)">For beginners</button>
+      </div>
+      <div id="coursesContainer" class="courses-grid"></div>
+    </div>
+  </div>
+
+  <div id="eventsSection" class="hidden">
+    <section class="page-header"><div class="container"><h1>IT Events</h1><p>Participate in hackathons, meetups, and workshops</p></div></section>
+    <div class="container">
+      <div class="calendar-header">
+        <button class="btn btn-outline" onclick="changeMonth(-1)"><i class="fas fa-chevron-left"></i></button>
+        <h2 id="currentMonth"></h2>
+        <button class="btn btn-outline" onclick="changeMonth(1)"><i class="fas fa-chevron-right"></i></button>
+      </div>
+      <div id="eventsContainer" class="events-grid"></div>
+    </div>
+  </div>
+
+  <div id="resourcesSection" class="hidden">
+    <section class="page-header"><div class="container"><h1>Resources & Mentors</h1><p>Guides, articles, and personal mentorship</p></div></section>
+    <div class="container">
+      <div class="resources-grid">
+        <div class="resource-card" onclick="openResource('cv')"><div class="resource-icon"><i class="fas fa-file-alt"></i></div><h3>How to write a CV</h3><p>Detailed guide to creating an effective IT resume</p><span class="resource-tag">Guide</span></div>
+        <div class="resource-card" onclick="openResource('portfolio')"><div class="resource-icon"><i class="fas fa-laptop-code"></i></div><h3>Portfolio for IT</h3><p>What should be in a developer's portfolio</p><span class="resource-tag">Article</span></div>
+        <div class="resource-card" onclick="openResource('interview')"><div class="resource-icon"><i class="fas fa-comments"></i></div><h3>Interview</h3><p>Top 50 questions and how to answer them</p><span class="resource-tag">Checklist</span></div>
+        <div class="resource-card" onclick="openResource('skills')"><div class="resource-icon"><i class="fas fa-code"></i></div><h3>Skills 2026</h3><p>What to learn this year</p><span class="resource-tag">Overview</span></div>
+      </div>
+      <div class="mentors-section">
+        <h2>Mentors</h2>
+        <div id="mentorsContainer" class="mentors-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="profileSection" class="hidden">
+    <section class="page-header"><div class="container"><h1>Dashboard</h1></div></section>
+    <div class="container">
+      <div class="profile-grid">
+        <div class="profile-sidebar">
+          <div class="profile-avatar-large" id="profileAvatar">U</div>
+          <h2 id="profileDisplayName">User</h2>
+          <p id="profileDisplayEmail">user@example.com</p>
+          <div class="profile-stats" id="profileStatsContainer">
+            <div class="profile-stat"><div class="stat-value" id="profileSavedCount">0</div><div class="stat-label">Saved</div></div>
+            <div class="profile-stat"><div class="stat-value" id="profileApplicationsCount">0</div><div class="stat-label">Applications</div></div>
+          </div>
+          <button class="btn btn-outline btn-block" onclick="showProfileTab('settings')"><i class="fas fa-edit"></i><span>Edit</span></button>
+        </div>
+        <div class="profile-content">
+          <div class="profile-tabs" id="profileTabs">
+            <button class="tab-btn active" onclick="showProfileTab('dashboard')"><i class="fas fa-chart-line"></i><span>Dashboard</span></button>
+            <button class="tab-btn" onclick="showProfileTab('portfolio')"><i class="fas fa-folder-open"></i><span>Portfolio</span></button>
+            <button class="tab-btn" onclick="showProfileTab('skills')"><i class="fas fa-star"></i><span>Skills</span></button>
+            <button class="tab-btn" onclick="showProfileTab('myCourses')"><i class="fas fa-graduation-cap"></i><span>My Courses</span></button>
+            <button class="tab-btn" onclick="showProfileTab('applications')"><i class="fas fa-paper-plane"></i><span>Applications</span></button>
+            <button class="tab-btn" onclick="showProfileTab('saved')"><i class="fas fa-bookmark"></i><span>Saved</span></button>
+            <button class="tab-btn" onclick="showProfileTab('cv')"><i class="fas fa-file-alt"></i><span>My CV</span></button>
+            <button class="tab-btn" onclick="showProfileTab('settings')"><i class="fas fa-cog"></i><span>Settings</span></button>
+          </div>
+          
+          <!-- СТУДЕНЧЕСКИЕ ВКЛАДКИ -->
+          <div id="dashboardTab" class="profile-tab active">
+            <div id="studentDashboard"></div>
+          </div>
+          <div id="portfolioTab" class="profile-tab">
+            <div id="portfolioContent"></div>
+          </div>
+          <div id="skillsTab" class="profile-tab">
+            <div id="skillsContent"></div>
+          </div>
+          <div id="myCoursesTab" class="profile-tab">
+            <div id="myCoursesContent"></div>
+          </div>
+          <div id="applicationsTab" class="profile-tab">
+            <div id="applicationsList"></div>
+          </div>
+          <div id="savedTab" class="profile-tab">
+            <div id="savedInternships" class="saved-list"></div>
+          </div>
+          <div id="cvTab" class="profile-tab">
+            <div id="cvContent"></div>
+          </div>
+          <div id="settingsTab" class="profile-tab">
+            <div id="settingsContent"></div>
+          </div>
+          
+          <!-- ВКЛАДКИ СООБЩЕНИЙ И РАБОТОДАТЕЛЯ -->
+          <div id="messagesTab" class="profile-tab hidden">
+            <div id="chatsContent"></div>
+          </div>
+          <div id="employerDashboardTab" class="profile-tab hidden">
+            <div id="employerDashboardContent"></div>
+          </div>
+          <div id="employerInternshipsTab" class="profile-tab hidden">
+            <div id="employerInternshipsContent"></div>
+          </div>
+          <div id="employerCoursesTab" class="profile-tab hidden">
+            <div id="employerCoursesContent"></div>
+          </div>
+          <div id="employerEventsTab" class="profile-tab hidden">
+            <div id="employerEventsContent"></div>
+          </div>
+          <div id="employerApplicantsTab" class="profile-tab hidden">
+            <div id="employerApplicantsContent"></div>
+          </div>
+<!-- ВКЛАДКА CONNECTIONS -->
+          <div id="connectionsTab" class="profile-tab hidden">
+            <div id="connectionsContent"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="savedSection" class="hidden">
+    <section class="page-header"><div class="container"><h1>Saved</h1></div></section>
+    <div class="container section"><div id="savedContainer" class="saved-grid"></div></div>
+  </div>
+
+
+
+    <!-- ==================== ПУБЛИЧНЫЙ ПРОФИЛЬ ==================== -->
+  <div id="publicProfileSection" class="hidden">
+    <section class="page-header">
+      <div class="container">
+        <h1 id="publicProfileName">User Profile</h1>
+        <p id="publicProfileLevel">Member</p>
+      </div>
+    </section>
+    <div class="container">
+      <div class="profile-grid">
+        <div class="profile-sidebar" id="publicProfileSidebar">
+          <!-- Заполняется из JS -->
+        </div>
+        <div class="profile-content">
+          <div class="profile-tabs" id="publicProfileTabs">
+            <button class="tab-btn active" onclick="showPublicTab('about')">About</button>
+            <button class="tab-btn" onclick="showPublicTab('posts')">Posts</button>
+            <button class="tab-btn" onclick="showPublicTab('portfolio')">Portfolio</button>
+            <button class="tab-btn" onclick="showPublicTab('activity')">Activity</button>
+          </div>
+          <div id="publicAboutTab" class="profile-tab active">
+            <div id="publicAboutContent"></div>
+          </div>
+          <div id="publicPostsTab" class="profile-tab">
+            <div id="publicPostsContent"></div>
+          </div>
+          <div id="publicPortfolioTab" class="profile-tab">
+            <div id="publicPortfolioContent"></div>
+          </div>
+          <div id="publicActivityTab" class="profile-tab">
+            <div id="publicActivityContent"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="applicationsSection" class="hidden">
+    <section class="page-header"><div class="container"><h1>My Applications</h1></div></section>
+    <div class="container section"><div id="applicationsContainer" class="applications-grid"></div></div>
+  </div>
+</main>
+
+<!-- Modals -->
+<!-- Modals -->
+<div class="modal" id="loginModal">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeModal('login')"><i class="fas fa-times"></i></button>
+    <div class="modal-header"><h2>Welcome back!</h2><p>Sign in to your account</p></div>
+    <form onsubmit="handleLogin(event)">
+      <div class="form-group"><label>Email</label><input type="email" id="loginEmail" class="form-control" placeholder="you@example.com" required></div>
+      <div class="form-group"><label>Password</label><input type="password" id="loginPassword" class="form-control" placeholder="••••••••" required></div>
+      
+      <!-- ✅ Добавлена кнопка "Forgot Password" -->
+      <div style="text-align:right;margin-bottom:1rem;">
+        <a onclick="resetPassword()" style="color:var(--primary);font-size:.85rem;cursor:pointer;">Forgot Password?</a>
+      </div>
+      
+      <button type="submit" class="btn btn-primary btn-block">Sign In <i class="fas fa-arrow-right"></i></button>
+    </form>
+    <div class="modal-footer">Don't have an account? <a onclick="switchModal('register')">Sign Up</a></div>
+    
+    <!-- ✅ Добавлена кнопка повторной верификации -->
+    <div style="text-align:center;margin-top:.5rem;">
+      <a onclick="resendVerificationEmail()" style="color:var(--muted);font-size:.8rem;cursor:pointer;">Resend verification email</a>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="registerModal">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeModal('register')"><i class="fas fa-times"></i></button>
+    <div class="modal-header"><h2>Create account</h2><p>Start your journey in IT</p></div>
+    <form onsubmit="handleRegister(event)">
+      <div class="form-group"><label>Name</label><input type="text" id="regName" class="form-control" placeholder="John" required></div>
+      <div class="form-group"><label>Email</label><input type="email" id="regEmail" class="form-control" placeholder="you@example.com" required></div>
+      <div class="form-group">
+        <label>Account type</label>
+        <select id="regRole" class="form-control">
+          <option value="student">Student</option>
+          <option value="employer">Employer</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Password</label><input type="password" id="regPassword" class="form-control" placeholder="Minimum 6 characters" required></div>
+      <div class="form-group"><label>Confirm password</label><input type="password" id="regConfirmPassword" class="form-control" placeholder="Repeat password" required></div>
+      
+      <div id="companyFieldsRegister" class="hidden">
+        <div class="form-group"><label>Company Name</label><input type="text" id="regCompanyName" class="form-control" placeholder="Your company name"></div>
+        <div class="form-group"><label>Description</label><textarea id="regCompanyDesc" class="form-control" rows="2" placeholder="About your company..."></textarea></div>
+        <div class="form-group"><label>Website</label><input type="url" id="regCompanyWebsite" class="form-control" placeholder="https://example.com"></div>
+        <div class="form-group"><label>Location</label><input type="text" id="regCompanyLocation" class="form-control" placeholder="Almaty, Kazakhstan"></div>
+      </div>
+      
+      <button type="submit" class="btn btn-primary btn-block">Sign Up <i class="fas fa-arrow-right"></i></button>
+    </form>
+    <div class="modal-footer">Already have an account? <a onclick="switchModal('login')">Sign In</a></div>
+  </div>
+</div>
+
+<div class="modal" id="internshipModal"><div class="modal-content modal-lg"><button class="modal-close" onclick="closeModal('internship')"><i class="fas fa-times"></i></button><div id="internshipDetail" class="modal-body"></div></div></div>
+<div class="modal" id="courseModal"><div class="modal-content modal-lg"><button class="modal-close" onclick="closeModal('course')"><i class="fas fa-times"></i></button><div id="courseDetail" class="modal-body"></div></div></div>
+<div class="modal" id="eventModal"><div class="modal-content modal-lg"><button class="modal-close" onclick="closeModal('event')"><i class="fas fa-times"></i></button><div id="eventDetail" class="modal-body"></div></div></div>
+<div class="modal" id="resourceModal"><div class="modal-content modal-lg"><button class="modal-close" onclick="closeModal('resource')"><i class="fas fa-times"></i></button><div id="resourceDetail" class="modal-body"></div></div></div>
+
+<div id="toastContainer"></div>
+
+<!-- ========== FIREBASE SDK ========== -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+  import { 
+    getAuth, 
+    signInWithEmailAndPassword, 
+    createUserWithEmailAndPassword, 
+    signOut,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+  import { 
+    getFirestore, 
+    collection, 
+    doc, 
+    setDoc, 
+    getDoc, 
+    getDocs, 
+    updateDoc, 
+    deleteDoc, 
+    query, 
+    where,
+    addDoc,
+    serverTimestamp,
+    orderBy,
+    limit
+  } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+  import { 
+    sendEmailVerification, 
+    sendPasswordResetEmail 
+  } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+    const firebaseConfig = {
+    apiKey: "AIzaSyCCTzG80yZhkwM0DlBFM9FWnohtriK9sxQ",
+    authDomain: "qadam-final.firebaseapp.com",
+    projectId: "qadam-final",
+    storageBucket: "qadam-final.firebasestorage.app",
+    messagingSenderId: "297881942246",
+    appId: "1:297881942246:web:64620ebd7197b1f0e3e327"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // Экспорт в глобальную область видимости
+  window.auth = auth;
+  window.db = db;
+  window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+  window.signOut = signOut;
+  window.onAuthStateChanged = onAuthStateChanged;
+  window.collection = collection;
+  window.doc = doc;
+  window.setDoc = setDoc;
+  window.getDoc = getDoc;
+  window.getDocs = getDocs;
+  window.updateDoc = updateDoc;
+  window.deleteDoc = deleteDoc;
+  window.query = query;
+  window.where = where;
+  window.addDoc = addDoc;
+  window.serverTimestamp = serverTimestamp;
+  window.orderBy = orderBy;
+  window.limit = limit;
+  window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+  window.signOut = signOut;
+  window.onAuthStateChanged = onAuthStateChanged;
+  window.sendEmailVerification = sendEmailVerification;       // нужно импортировать
+  window.sendPasswordResetEmail = sendPasswordResetEmail;    // нужно импортировать
+    console.log('✅ Firebase initialized successfully');
+</script>
+<!-- ========== КОНЕЦ БЛОКА FIREBASE ========== -->
+
+<!-- ========== ПОДКЛЮЧЕНИЕ JS ФАЙЛОВ ========== -->
+<script src="src/js/state.js"></script>
+<script src="src/js/utils.js"></script>  <!-- Must be before ui.js -->
+<script src="src/js/ui.js"></script>
+<script src="src/js/auth.js"></script>
+<script src="src/js/student.js"></script>
+<script src="src/js/employer.js"></script>
+<script src="src/js/social.js"></script>
+<script src="src/js/app.js"></script>    <!-- Last, because it depends on everything -->
+</body>
+</html>
