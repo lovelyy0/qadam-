@@ -29,7 +29,10 @@ if (currentUser) initStudentData();
 // ==================== DASHBOARD ====================
 function loadStudentDashboard() {
     const container = document.getElementById('studentDashboard');
-    if (!container) return;
+    if (!container) {
+        console.error('Student dashboard container not found!');
+        return;
+    }
     const stats = { 
         applications: applications.length, 
         saved: savedItems.length, 
@@ -142,43 +145,74 @@ function openAddProjectModal(existingProjectOrId) {
 
 async function saveProject(event, projectId) {
     event.preventDefault();
-    const titleInput = document.getElementById('projectTitle');
-    if (!titleInput?.value.trim()) { showNotification('Project title is required', 'warning'); return; }
-    
+    const restore = window.setButtonLoading(event.submitter);
+
+    // Единая проверка через validation.js
+    if (!window.validateProjectForm()) {
+        restore();
+        return;
+    }
+
     const projectData = {
-        title: titleInput.value.trim(),
+        title: document.getElementById('projectTitle')?.value?.trim() || '',
         category: document.getElementById('projectCategory')?.value || '',
-        description: document.getElementById('projectDesc')?.value.trim() || '',
-        link: document.getElementById('projectLink')?.value.trim() || '',
-        technologies: (document.getElementById('projectTech')?.value||'').split(',').map(t=>t.trim()).filter(Boolean),
+        description: document.getElementById('projectDesc')?.value?.trim() || '',
+        link: document.getElementById('projectLink')?.value?.trim() || '',
+        technologies: (document.getElementById('projectTech')?.value || '')
+                        .split(',')
+                        .map(t => t.trim())
+                        .filter(Boolean),
         featured: document.getElementById('projectFeatured')?.checked || false
     };
-    
+
+    // ✅ ПРОВЕРКА ТЕХНОЛОГИЙ (вставлено здесь)
+    const invalidTechs = projectData.technologies.filter(
+        t => !/[a-zA-Zа-яА-ЯёЁіІ]/.test(t)  // нет ни одной буквы
+    );
+    if (invalidTechs.length > 0) {
+        showNotification('Each technology must contain at least one letter', 'warning');
+        restore();
+        return;
+    }
+
     if (!studentPortfolio) studentPortfolio = { projects: [], skills: [], certificates: [] };
     if (!studentPortfolio.projects) studentPortfolio.projects = [];
-    
+
     if (projectId === null || projectId === 'null' || projectId === undefined) {
-        studentPortfolio.projects.push({ id: Date.now(), ...projectData, createdAt: new Date().toISOString() });
+        studentPortfolio.projects.push({
+            id: Date.now(),
+            ...projectData,
+            createdAt: new Date().toISOString()
+        });
         showNotification('Project added successfully! 🎉', 'success');
     } else {
         const idx = studentPortfolio.projects.findIndex(p => p.id === parseInt(projectId));
-        if (idx !== -1) { 
-            studentPortfolio.projects[idx] = { ...studentPortfolio.projects[idx], ...projectData, updatedAt: new Date().toISOString() }; 
+        if (idx !== -1) {
+            studentPortfolio.projects[idx] = {
+                ...studentPortfolio.projects[idx],
+                ...projectData,
+                updatedAt: new Date().toISOString()
+            };
             showNotification('Project updated successfully! ✅', 'success');
         }
     }
-    
+
     try {
         const portfolioRef = window.doc(window.db, 'portfolios', currentUser.id);
-        await window.setDoc(portfolioRef, { projects: studentPortfolio.projects, skills: studentPortfolio.skills || [], certificates: studentPortfolio.certificates || [] }, { merge: true });
+        await window.setDoc(portfolioRef, {
+            projects: studentPortfolio.projects,
+            skills: studentPortfolio.skills || [],
+            certificates: studentPortfolio.certificates || []
+        }, { merge: true });
     } catch (err) {
         console.error('Error saving portfolio:', err);
     }
-    
+
     localStorage.setItem(`qadam_portfolio_${currentUser.id}`, JSON.stringify(studentPortfolio));
     event.target.closest('.modal').remove();
     loadPortfolio();
     loadStudentDashboard();
+    restore();
 }
 
 async function loadPortfolio() {
@@ -279,10 +313,18 @@ async function loadPortfolio() {
     });
 }
 
-function deleteProject(projectId) {
+// ✅ ЗАМЕНИ функцию deleteProject:
+async function deleteProject(projectId) {
     if (!confirm('Are you sure you want to delete this project?')) return;
     studentPortfolio.projects = studentPortfolio.projects.filter(p => p.id !== projectId);
     localStorage.setItem(`qadam_portfolio_${currentUser.id}`, JSON.stringify(studentPortfolio));
+    try {
+        await window.setDoc(
+            window.doc(window.db, 'portfolios', currentUser.id),
+            { projects: studentPortfolio.projects },
+            { merge: true }
+        );
+    } catch(e) { console.error('Firestore delete error:', e); }
     showNotification('Project deleted', 'info');
     loadPortfolio();
     loadStudentDashboard();
@@ -328,11 +370,15 @@ function loadSkills() {
                 <h4>${escapeHtml(cat)}</h4>
                 <div class="skills-tags">
                     ${skills.map(s => {
-                        const [bg, fg] = (LEVEL_COLORS[s.level] || LEVEL_COLORS['Intermediate']).split(',');
-                        return `<div class="skill-tag" style="background:${bg}">
-                            <span class="skill-tag-name" style="color:${fg}">${escapeHtml(s.name)}</span>
-                            <span class="skill-tag-level" style="color:${fg}">${s.level||'Intermediate'}</span>
-                            <button class="skill-tag-remove" style="color:${fg}" onclick="deleteSkill('${escapeHtml(s.name)}')">✕</button>
+                        const name = escapeHtml(s.name);
+                        const level = s.level || 'Intermediate';
+                        const [bgColor, textColor] = (LEVEL_COLORS[level] || LEVEL_COLORS['Intermediate']).split(',');
+                        return `
+                        <div class="skill-tag" style="background:${bgColor}; color:${textColor}; border-color:${textColor}30;">
+                            <span class="skill-tag-name">${name}</span>
+                            <span class="skill-tag-level">${level}</span>
+                            <button class="skill-tag-remove" title="Edit skill" onclick="event.stopPropagation(); editSkill('${name}')" style="color:${textColor};">✏️</button>
+                            <button class="skill-tag-remove" title="Delete skill" onclick="event.stopPropagation(); deleteSkill('${name}')" style="color:${textColor};">✕</button>
                         </div>`;
                     }).join('')}
                 </div>
@@ -352,6 +398,7 @@ function loadSkills() {
                 <div class="certificate-card">
                     <div class="certificate-card-header">
                         <i class="fas fa-award"></i>
+                        <button class="remove-btn edit-cert-btn" onclick="editCertificate(${cert.id})">✏️</button>
                         <button class="remove-btn" onclick="deleteCertificate(${cert.id})">✕</button>
                     </div>
                     <h4>${escapeHtml(cert.name)}</h4>
@@ -404,48 +451,126 @@ function openAddSkillModal() {
 
 async function saveSkill(event) {
     event.preventDefault();
+    const restore = window.setButtonLoading(event.submitter);
+
     const name = document.getElementById('skillName')?.value.trim();
-    if (!name) return;
+    if (!name) {
+        showNotification('Skill name is required', 'warning');
+        restore();
+        return;
+    }
+
+    const skillError = window.QadamValidators.skillName(name);
+    if (skillError) {
+        showFieldError('skillName', skillError);   // подсветит поле
+        showNotification(skillError, 'warning');
+        restore();
+        return;
+    }
+    clearFieldError('skillName');
+
     const category = document.getElementById('skillCategory')?.value || 'Other';
     const level = document.querySelector('input[name="skillLevel"]:checked')?.value || 'Intermediate';
+
     if (!studentPortfolio.skills) studentPortfolio.skills = [];
-    const exists = studentPortfolio.skills.findIndex(s => (typeof s==='string'?s:s.name).toLowerCase() === name.toLowerCase());
-    if (exists !== -1) { showNotification('Skill already exists', 'warning'); return; }
+    const exists = studentPortfolio.skills.some(
+        s => (typeof s === 'string' ? s : s.name).toLowerCase() === name.toLowerCase()
+    );
+    if (exists) {
+        showNotification('Skill already exists', 'warning');
+        restore();
+        return;
+    }
+
     studentPortfolio.skills.push({ name, category, level });
-    
-    await window.setDoc(window.doc(window.db, 'portfolios', currentUser.id), { skills: studentPortfolio.skills }, { merge: true });
+
+    try {
+        await window.setDoc(
+            window.doc(window.db, 'portfolios', currentUser.id),
+            { skills: studentPortfolio.skills },
+            { merge: true }
+        );
+        localStorage.setItem(`qadam_portfolio_${currentUser.id}`, JSON.stringify(studentPortfolio));
+        showNotification('Skill added! ⭐', 'success');
+        event.target.closest('.modal').remove();
+        loadSkills();
+    } catch (e) {
+        console.error('Save skill error:', e);
+        showNotification('Error saving skill', 'error');
+    }
+    restore();
+}
+
+// ✅ ЗАМЕНИ функцию deleteSkill:
+async function deleteSkill(skillName) {
+    if (!studentPortfolio?.skills) return;
+    const idx = studentPortfolio.skills.findIndex(
+        s => (typeof s === 'string' ? s : s.name) === skillName
+    );
+    if (idx === -1) return;
+    studentPortfolio.skills.splice(idx, 1);
     localStorage.setItem(`qadam_portfolio_${currentUser.id}`, JSON.stringify(studentPortfolio));
-    showNotification('Skill added! ⭐', 'success');
-    event.target.closest('.modal').remove();
+    try {
+        await window.setDoc(
+            window.doc(window.db, 'portfolios', currentUser.id),
+            { skills: studentPortfolio.skills },
+            { merge: true }
+        );
+    } catch(e) { console.error('Firestore delete error:', e); }
+    showNotification('Skill removed', 'info');
     loadSkills();
 }
 
-function deleteSkill(skillName) {
-    if (!studentPortfolio?.skills) return;
-    const idx = studentPortfolio.skills.findIndex(s => (typeof s==='string'?s:s.name) === skillName);
-    if (idx !== -1) {
-        studentPortfolio.skills.splice(idx, 1);
-        localStorage.setItem(`qadam_portfolio_${currentUser.id}`, JSON.stringify(studentPortfolio));
-        showNotification('Skill removed', 'info');
-        loadSkills();
+function openAddCertificateModal(existingCertOrId) {
+    let existingCert = null;
+    if (typeof existingCertOrId === 'number') {
+        existingCert = studentPortfolio.certificates.find(c => c.id === existingCertOrId) || null;
+    } else if (existingCertOrId && typeof existingCertOrId === 'object') {
+        existingCert = existingCertOrId;
     }
-}
+    const isEdit = !!existingCert;
 
-function openAddCertificateModal() {
     const modal = document.createElement('div');
     modal.className = 'modal show';
     modal.innerHTML = `
         <div class="modal-content" style="max-width:480px;">
             <button class="modal-close" onclick="this.closest('.modal').remove()"><i class="fas fa-times"></i></button>
-            <div class="modal-header"><h2>Add Certificate</h2><p>Add your achievements and credentials</p></div>
-            <form onsubmit="saveCertificate(event)">
-                <div class="form-group"><label>Certificate Name *</label><input type="text" id="certName" class="form-control" placeholder="e.g., AWS Solutions Architect" required></div>
-                <div class="form-group"><label>Issuing Organization</label><input type="text" id="certIssuer" class="form-control" placeholder="e.g., Amazon Web Services"></div>
-                <div class="form-group"><label>Date Issued</label><input type="date" id="certDate" class="form-control"></div>
-                <div class="form-group"><label>Certificate URL (optional)</label><input type="url" id="certUrl" class="form-control" placeholder="https://..."></div>
+            <div class="modal-header">
+                <h2>${isEdit ? 'Edit' : 'Add'} Certificate</h2>
+                <p>${isEdit ? 'Update your achievement' : 'Add your achievements and credentials'}</p>
+            </div>
+            <form onsubmit="saveCertificate(event, ${isEdit ? existingCert.id : 'null'})">
+                <div class="form-group">
+                    <label>Certificate Name *</label>
+                    <input type="text" id="certName" class="form-control"
+                           placeholder="e.g., AWS Solutions Architect"
+                           value="${isEdit ? escapeHtml(existingCert.name) : ''}" required>
+                </div>
+                <div class="form-group">
+                    <label>Issuing Organization *</label>
+                    <input type="text" id="certIssuer" class="form-control"
+                           placeholder="e.g., Amazon Web Services"
+                           value="${isEdit ? escapeHtml(existingCert.issuer || '') : ''}">
+                </div>
+                <div class="form-group">
+                    <label>Date Issued *</label>
+                    <input type="date" id="certDate" class="form-control"
+                           value="${isEdit ? (existingCert.date || '') : ''}">
+                </div>
+                <div class="form-group">
+                    <label>Certificate URL</label>
+                    <input type="url" id="certUrl" class="form-control"
+                           placeholder="https://..."
+                           value="${isEdit ? escapeHtml(existingCert.url || '') : ''}">
+                </div>
                 <div style="display:flex;gap:1rem;margin-top:1.5rem;">
-                    <button type="submit" class="btn btn-primary" style="flex:1;background:#7c3aed;border-color:#7c3aed;"><i class="fas fa-award"></i> Add Certificate</button>
-                    <button type="button" class="btn btn-outline" onclick="this.closest('.modal').remove()" style="flex:1;">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="flex:1;">
+                        <i class="fas fa-save"></i> ${isEdit ? 'Update' : 'Add'} Certificate
+                    </button>
+                    <button type="button" class="btn btn-outline" 
+                            onclick="this.closest('.modal').remove()" style="flex:1;">
+                        Cancel
+                    </button>
                 </div>
             </form>
         </div>`;
@@ -453,65 +578,158 @@ function openAddCertificateModal() {
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
-async function saveCertificate(event) {
+async function saveCertificate(event, certId) {
     event.preventDefault();
-    const name = document.getElementById('certName')?.value.trim();
-    if (!name) return;
+    const restore = window.setButtonLoading(event.submitter);
+
+    if (!window.validateCertificateForm()) {
+        restore();
+        return;
+    }
+
+    const name = document.getElementById('certName')?.value?.trim();
+    const issuer = document.getElementById('certIssuer')?.value?.trim();
+    const date = document.getElementById('certDate')?.value;
+    const url = document.getElementById('certUrl')?.value?.trim();
+
     if (!studentPortfolio.certificates) studentPortfolio.certificates = [];
-    studentPortfolio.certificates.push({ 
-        id: Date.now(), 
-        name, 
-        issuer: document.getElementById('certIssuer')?.value.trim()||'', 
-        date: document.getElementById('certDate')?.value||'', 
-        url: document.getElementById('certUrl')?.value.trim()||'', 
-        addedAt: new Date().toISOString() 
-    });
-    
-    await window.setDoc(window.doc(window.db, 'portfolios', currentUser.id), { certificates: studentPortfolio.certificates }, { merge: true });
+
+    const certData = {
+        name,
+        issuer,
+        date,
+        url: url || '',
+        createdAt: new Date().toISOString()
+    };
+
+    if (certId === null || certId === 'null' || certId === undefined) {
+        // Добавление нового
+        studentPortfolio.certificates.push({
+            id: Date.now(),
+            ...certData
+        });
+        showNotification('Certificate added! 🏆', 'success');
+    } else {
+        // Обновление существующего
+        const idx = studentPortfolio.certificates.findIndex(c => c.id === parseInt(certId));
+        if (idx !== -1) {
+            studentPortfolio.certificates[idx] = {
+                ...studentPortfolio.certificates[idx],
+                ...certData,
+                updatedAt: new Date().toISOString()
+            };
+            showNotification('Certificate updated! ✅', 'success');
+        }
+    }
+
+    try {
+        const portfolioRef = window.doc(window.db, 'portfolios', currentUser.id);
+        await window.setDoc(portfolioRef,
+            { certificates: studentPortfolio.certificates },
+            { merge: true }
+        );
+    } catch (err) {
+        console.error('Error saving certificate:', err);
+    }
+
     localStorage.setItem(`qadam_portfolio_${currentUser.id}`, JSON.stringify(studentPortfolio));
-    showNotification('Certificate added! 🏆', 'success');
     event.target.closest('.modal').remove();
-    loadSkills();
+    loadSkills();   // перерисовываем список сертификатов
+    restore();
 }
 
-function deleteCertificate(certId) {
-    if (!confirm('Delete this certificate?')) return;
+// ✅ ЗАМЕНИ функцию deleteCertificate:
+async function deleteCertificate(certId) {
+    if (!studentPortfolio?.certificates) return;
     studentPortfolio.certificates = studentPortfolio.certificates.filter(c => c.id !== certId);
     localStorage.setItem(`qadam_portfolio_${currentUser.id}`, JSON.stringify(studentPortfolio));
+    try {
+        await window.setDoc(
+            window.doc(window.db, 'portfolios', currentUser.id),
+            { certificates: studentPortfolio.certificates },
+            { merge: true }
+        );
+    } catch(e) { console.error(e); }
     showNotification('Certificate removed', 'info');
     loadSkills();
 }
-
 // ==================== GITHUB INTEGRATION ====================
 function connectGitHub() {
-    const username = prompt('Enter your GitHub username:', studentPortfolio.githubProfile || '');
-    if (!username) return;
-    
+    const modal = document.createElement('div');
+    modal.className = 'modal show';
+
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width:380px;">
+            <button class="modal-close" onclick="this.closest('.modal').remove()">✖</button>
+
+            <h2>Connect GitHub</h2>
+
+            <div class="form-group">
+                <label>GitHub username</label>
+                <input 
+                    type="text" 
+                    id="githubUsernameInput" 
+                    class="form-control" 
+                    placeholder="e.g. octocat"
+                    value="${studentPortfolio.githubProfile || ''}"
+                >
+            </div>
+
+            <button class="btn btn-primary" onclick="fetchGitHubRepos()">
+                Connect
+            </button>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', e => {
+        if (e.target === modal) modal.remove();
+    });
+}
+async function fetchGitHubRepos() {
+    const username = document
+        .getElementById('githubUsernameInput')
+        ?.value
+        ?.trim();
+
+    if (!username) {
+        showNotification('Please enter a username', 'error');
+        return;
+    }
+
+    document.querySelector('.modal.show')?.remove();
     showNotification('Fetching GitHub data...', 'info');
-    
-    fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=10`)
-        .then(res => {
-            if (!res.ok) throw new Error('User not found or API limit');
-            return res.json();
-        })
-        .then(repos => {
-            studentPortfolio.githubProfile = username;
-            studentPortfolio.githubRepos = repos.map(repo => ({
-                name: repo.name,
-                description: repo.description,
-                url: repo.html_url,
-                stars: repo.stargazers_count,
-                forks: repo.forks_count,
-                language: repo.language,
-                updatedAt: repo.updated_at
-            }));
-            localStorage.setItem(`qadam_portfolio_${currentUser.id}`, JSON.stringify(studentPortfolio));
-            showNotification(`Connected to GitHub! Found ${repos.length} repos`, 'success');
-            loadPortfolio();
-        })
-        .catch(err => {
-            showNotification(`Error: ${err.message}`, 'error');
-        });
+
+    try {
+        const res = await fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=10`);
+
+        if (!res.ok) throw new Error('User not found or API limit');
+
+        const repos = await res.json();
+
+        studentPortfolio.githubProfile = username;
+        studentPortfolio.githubRepos = repos.map(repo => ({
+            name: repo.name,
+            description: repo.description,
+            url: repo.html_url,
+            stars: repo.stargazers_count,
+            forks: repo.forks_count,
+            language: repo.language,
+            updatedAt: repo.updated_at
+        }));
+
+        localStorage.setItem(
+            `qadam_portfolio_${currentUser.id}`,
+            JSON.stringify(studentPortfolio)
+        );
+
+        showNotification(`Connected! Found ${repos.length} repos`, 'success');
+        loadPortfolio();
+
+    } catch (err) {
+        showNotification(`Error: ${err.message}`, 'error');
+    }
 }
 
 // ==================== CV FUNCTIONS ====================
@@ -527,6 +745,7 @@ function loadCV() {
                 <div style="display:flex;gap:8px;">
                     <button class="btn btn-outline btn-small" onclick="previewCV()"><i class="fas fa-eye"></i> Preview</button>
                     <button class="btn btn-primary btn-small" onclick="saveCV()"><i class="fas fa-save"></i> Save</button>
+                    <button class="btn btn-outline btn-small" onclick="downloadCVPDF()"><i class="fas fa-download"></i> PDF</button>
                 </div>
             </div>
             <div class="cv-grid">
@@ -626,13 +845,22 @@ function addCVSkill() {
     const input = document.getElementById('newSkillInput');
     const skill = input?.value.trim();
     if (!skill) return;
+
+    const error = QadamValidators.skillName(skill);
+    if (error) {
+        showNotification(error, 'warning');
+        return;
+    }
+
     if (!studentCV.skills) studentCV.skills = [];
-    if (!studentCV.skills.includes(skill)) { 
-        studentCV.skills.push(skill); 
-        input.value = ''; 
-        loadCV(); 
+    if (!studentCV.skills.includes(skill)) {
+        studentCV.skills.push(skill);
+        input.value = '';
+        loadCV();
         showNotification('Skill added to CV', 'success');
-    } else showNotification('Skill already in CV', 'warning');
+    } else {
+        showNotification('Skill already in CV', 'warning');
+    }
 }
 
 function removeCVSkill(index) { studentCV.skills.splice(index, 1); loadCV(); }
@@ -641,6 +869,8 @@ function addCVLanguage() {
     const input = document.getElementById('newLanguageInput');
     const lang = input?.value.trim();
     if (!lang) return;
+    if (lang.length < 2)                   { showNotification('Language name too short', 'warning'); return; }
+    if (!/[a-zA-Zа-яА-ЯёЁіІ]/.test(lang)) { showNotification('Invalid language name', 'warning'); return; }
     if (!studentCV.languages) studentCV.languages = [];
     studentCV.languages.push(lang); 
     input.value = ''; 
@@ -666,26 +896,132 @@ function importSkillsFromPortfolio() {
 }
 
 async function saveCV() {
-    studentCV = { 
-        ...studentCV,
-        fullName: document.getElementById('cvFullName')?.value || currentUser.name || '',
-        title: document.getElementById('cvTitle')?.value || '',
-        email: document.getElementById('cvEmail')?.value || currentUser.email || '',
-        phone: document.getElementById('cvPhone')?.value || '',
-        location: document.getElementById('cvLocation')?.value || '',
-        summary: document.getElementById('cvSummary')?.value || '',
-        links: { linkedin: document.getElementById('cvLinkedIn')?.value || '', github: document.getElementById('cvGitHub')?.value || '' },
-        skills: studentCV?.skills || [],
-        languages: studentCV?.languages || [],
-        experience: studentCV?.experience || [],
-        education: studentCV?.education || []
-    };
-    
-    await window.setDoc(window.doc(window.db, 'studentCVs', currentUser.id), studentCV);
-    localStorage.setItem(`qadam_cv_${currentUser.id}`, JSON.stringify(studentCV));
-    showNotification('Resume saved successfully! ✅', 'success');
-}
+    const restore = window.setButtonLoading(document.querySelector('.cv-save-btn'));
 
+    const fullName  = document.getElementById('cvFullName')?.value?.trim() || '';
+    const title     = document.getElementById('cvTitle')?.value?.trim() || '';
+    const email     = document.getElementById('cvEmail')?.value?.trim() || '';
+    const phone     = document.getElementById('cvPhone')?.value?.trim() || '';
+    const linkedIn  = document.getElementById('cvLinkedIn')?.value?.trim() || '';
+    const github    = document.getElementById('cvGitHub')?.value?.trim() || '';
+    const summary   = document.getElementById('cvSummary')?.value?.trim() || '';
+    const location  = document.getElementById('cvLocation')?.value?.trim() || '';
+
+    // 1. Full Name – только буквы, пробелы, точки, дефисы
+    if (!fullName || fullName.length < 2) {
+        showNotification('Full Name is required (min 2 characters)', 'warning'); restore(); return;
+    }
+    if (!/^[a-zA-Zа-яА-ЯёЁіІ\s.\-]+$/.test(fullName)) {
+        showNotification('Full Name can only contain letters, spaces, dots, and hyphens', 'warning'); restore(); return;
+    }
+
+    // 2. Professional Title – обязательно, минимум 2 символа, содержит буквы
+    if (!title || title.length < 2) {
+        showNotification('Professional Title is required (min 2 characters)', 'warning'); restore(); return;
+    }
+    if (!/[a-zA-Zа-яА-ЯёЁіІ]/.test(title)) {
+        showNotification('Professional Title must contain at least one letter', 'warning'); restore(); return;
+    }
+
+    // 3. Location – только буквы, пробелы, запятые, дефисы (без цифр)
+    if (location && !/^[a-zA-Zа-яА-ЯёЁіІ\s,\-]+$/.test(location)) {
+        showNotification('Location can only contain letters, spaces, commas, and hyphens', 'warning'); restore(); return;
+    }
+
+    // 4. Email – валидный если указан
+    if (email && !window.isValidEmail(email)) {
+        showNotification('Invalid email format', 'warning'); restore(); return;
+    }
+
+    // 5. Phone – опционально, но если есть – формат
+    if (phone && !/^\+?[0-9\s\-()]{7,15}$/.test(phone)) {
+        showNotification('Invalid phone format', 'warning'); restore(); return;
+    }
+
+    // 6. LinkedIn / GitHub – если заполнены, должны быть валидными URL и начинаться с https://
+    if (linkedIn) {
+        if (!/^https:\/\//.test(linkedIn)) {
+            showNotification('LinkedIn URL must start with https://', 'warning'); restore(); return;
+        }
+        if (!window.isValidUrl(linkedIn)) {
+            showNotification('Invalid LinkedIn URL', 'warning'); restore(); return;
+        }
+    }
+    if (github) {
+        if (!/^https:\/\//.test(github)) {
+            showNotification('GitHub URL must start with https://', 'warning'); restore(); return;
+        }
+        if (!window.isValidUrl(github)) {
+            showNotification('Invalid GitHub URL', 'warning'); restore(); return;
+        }
+    }
+
+    // 7. Professional Summary – если заполнен, минимум 20 символов
+    if (summary && summary.length < 20) {
+        showNotification('Summary must be at least 20 characters', 'warning'); restore(); return;
+    }
+    if (summary && summary.length > 500) {
+        showNotification('Summary too long (max 500 chars)', 'warning'); restore(); return;
+    }
+
+    // 8. Проверка дат в опыте и образовании (уже была)
+    if (studentCV.experience) {
+        for (let exp of studentCV.experience) {
+            if (exp.startDate && exp.endDate && exp.startDate > exp.endDate) {
+                showNotification('End date cannot be before start date in experience', 'warning'); restore(); return;
+            }
+        }
+    }
+    if (studentCV.education) {
+        for (let edu of studentCV.education) {
+            if (edu.startYear && edu.endYear && parseInt(edu.startYear) > parseInt(edu.endYear)) {
+                showNotification('Graduation year cannot be before start year in education', 'warning'); restore(); return;
+            }
+        }
+    }
+
+    // Сохраняем
+    studentCV = {
+        ...studentCV,
+        fullName,
+        title,
+        email,
+        phone,
+        location,
+        summary,
+        links: {
+            linkedin: linkedIn,
+            github: github
+        }
+    };
+
+    try {
+        await window.setDoc(window.doc(window.db, 'studentCVs', currentUser.id), studentCV);
+        localStorage.setItem(`qadam_cv_${currentUser.id}`, JSON.stringify(studentCV));
+        showNotification('Resume saved successfully! ✅', 'success');
+    } catch (e) {
+        console.error(e);
+        showNotification('Error saving CV', 'error');
+    }
+    restore();
+}
+function downloadCVPDF() {
+    // Формируем имя файла: Имя_Resume (без пробелов)
+    const fullName = studentCV?.fullName || currentUser?.name || 'Resume';
+    const filename = `${fullName.replace(/\s+/g, '_')}_Resume`;
+
+    // Временно меняем заголовок страницы — браузер использует его как имя PDF
+    const originalTitle = document.title;
+    document.title = filename;
+
+    // Запускаем печать (пользователь выберет "Сохранить как PDF")
+    window.print();
+
+    // Возвращаем оригинальный заголовок после печати
+    setTimeout(() => {
+        document.title = originalTitle;
+    }, 1000);
+}
 function previewCV() {
     const cv = studentCV;
     const modal = document.createElement('div');
@@ -805,7 +1141,8 @@ function uploadCVFile() {
             showNotification(`CV "${file.name}" uploaded! ✅`, 'success');
             loadCV();
         };
-        reader.readAsArrayBuffer(file);
+        reader.readAsDataURL(file);
+
     };
     input.click();
 }
@@ -879,30 +1216,86 @@ function _expModal(exp, idx) {
 function addCVExperience() { _expModal(null, null); }
 function editCVExperience(idx) { _expModal(studentCV.experience[idx], idx); }
 
-function saveCVExperience(event, editIdx) {
+async function saveCVExperience(event, editIdx) {
     event.preventDefault();
-    const entry = { 
-        title: document.getElementById('expTitle').value.trim(), 
-        company: document.getElementById('expCompany').value.trim(), 
-        location: document.getElementById('expLocation')?.value.trim()||'', 
-        startDate: document.getElementById('expStart')?.value||'', 
-        endDate: document.getElementById('expEnd')?.value||'', 
-        current: document.getElementById('expCurrent')?.checked||false, 
-        description: document.getElementById('expDesc')?.value.trim()||'' 
-    };
+    const title       = document.getElementById('expTitle').value.trim();
+    const company     = document.getElementById('expCompany').value.trim();
+    const location    = document.getElementById('expLocation')?.value.trim() || '';
+    const startDate   = document.getElementById('expStart')?.value || '';
+    const endDate     = document.getElementById('expEnd')?.value || '';
+    const current     = document.getElementById('expCurrent')?.checked || false;
+    const description = document.getElementById('expDesc')?.value.trim() || '';
+
+    // 1. Job Title – только буквы, пробелы, дефисы, мин. 2 символа
+    if (!title || title.length < 2) {
+        showNotification('Job Title is required (min 2 characters)', 'warning');
+        return;
+    }
+    if (!/^[a-zA-Zа-яА-ЯёЁіІ\s\-]+$/.test(title)) {
+        showNotification('Job Title can only contain letters, spaces, and hyphens', 'warning');
+        return;
+    }
+
+    // 2. Company – обязательно, минимум 2 символа, буквы/цифры/пробелы/дефисы
+    if (!company || company.length < 2) {
+        showNotification('Company is required (min 2 characters)', 'warning');
+        return;
+    }
+    if (!/^[a-zA-Zа-яА-ЯёЁіІ0-9\s\-.]+$/.test(company)) {
+        showNotification('Company can only contain letters, numbers, spaces, hyphens, and dots', 'warning');
+        return;
+    }
+
+    // 3. Location – если указан, только буквы, пробелы, запятые, дефисы (без цифр)
+    if (location && !/^[a-zA-Zа-яА-ЯёЁіІ\s,\-]+$/.test(location)) {
+        showNotification('Location can only contain letters, spaces, commas, and hyphens', 'warning');
+        return;
+    }
+
+    // 4. Description – если заполнено, минимум 10 символов
+    if (description && description.length < 10) {
+        showNotification('Description must be at least 10 characters', 'warning');
+        return;
+    }
+
+    // 5. Даты: если не работает сейчас и указаны обе — конец позже начала
+    if (startDate && endDate && !current && startDate > endDate) {
+        showNotification('End date cannot be before start date', 'warning');
+        return;
+    }
+
+    const entry = { title, company, location, startDate, endDate, current, description };
+
     if (!studentCV.experience) studentCV.experience = [];
-    if (editIdx !== null && editIdx !== 'null') studentCV.experience[parseInt(editIdx)] = entry;
-    else studentCV.experience.push(entry);
+    if (editIdx !== null && editIdx !== 'null') {
+        studentCV.experience[parseInt(editIdx)] = entry;
+    } else {
+        studentCV.experience.push(entry);
+    }
+
     localStorage.setItem(`qadam_cv_${currentUser.id}`, JSON.stringify(studentCV));
+    try {
+        await window.setDoc(window.doc(window.db, 'studentCVs', currentUser.id), studentCV);
+    } catch(e) {
+        console.error('Firestore CV save error:', e);
+    }
+
     showNotification('Experience saved!', 'success');
     event.target.closest('.modal').remove();
     loadCV();
 }
 
-function deleteCVExperience(idx) {
+// ✅ Должно быть:
+async function deleteCVExperience(idx) {
     if (!confirm('Delete this experience?')) return;
     studentCV.experience.splice(idx, 1);
     localStorage.setItem(`qadam_cv_${currentUser.id}`, JSON.stringify(studentCV));
+    try {
+        await window.setDoc(
+            window.doc(window.db, 'studentCVs', currentUser.id),
+            studentCV
+        );
+    } catch(e) { console.error('Firestore CV save error:', e); }
     loadCV();
 }
 
@@ -935,28 +1328,112 @@ function _eduModal(edu, idx) {
 function addCVEducation() { _eduModal(null, null); }
 function editCVEducation(idx) { _eduModal(studentCV.education[idx], idx); }
 
-function saveCVEducation(event, editIdx) {
+async function saveCVEducation(event, editIdx) {
     event.preventDefault();
-    const entry = { 
-        degree: document.getElementById('eduDegree').value.trim(), 
-        institution: document.getElementById('eduInstitution').value.trim(), 
-        startYear: document.getElementById('eduStart')?.value||'', 
-        endYear: document.getElementById('eduEnd')?.value||'', 
-        gpa: document.getElementById('eduGpa')?.value.trim()||'' 
+    const degree      = document.getElementById('eduDegree').value.trim();
+    const institution = document.getElementById('eduInstitution').value.trim();
+    const startYear   = parseInt(document.getElementById('eduStart')?.value);
+    const endYear     = parseInt(document.getElementById('eduEnd')?.value);
+    const gpa         = document.getElementById('eduGpa')?.value.trim() || '';
+
+    // Вспомогательная функция: содержит хотя бы одну гласную (латиница + кириллица)
+    const hasVowel = (str) => /[aeiouyаеёиоуыэюя]/i.test(str);
+
+    // 1. Degree – обязательно, мин. 3 символа, разрешены буквы/пробелы/точки/запятые/дефисы, и должна быть гласная
+    if (!degree || degree.length < 3) {
+        showNotification('Degree is required (min 3 characters)', 'warning');
+        return;
+    }
+    if (!/^[a-zA-Zа-яА-ЯёЁіІ\s,.\-]+$/.test(degree)) {
+        showNotification('Degree can only contain letters, spaces, dots, commas, and hyphens', 'warning');
+        return;
+    }
+    if (!hasVowel(degree)) {
+        showNotification('Degree must contain at least one vowel', 'warning');
+        return;
+    }
+
+    // 2. Institution – обязательно, мин. 3 символа, разрешены буквы/пробелы/точки/запятые/дефисы, и должна быть гласная
+    if (!institution || institution.length < 3) {
+        showNotification('Institution is required (min 3 characters)', 'warning');
+        return;
+    }
+    if (!/^[a-zA-Zа-яА-ЯёЁіІ\s,.\-]+$/.test(institution)) {
+        showNotification('Institution can only contain letters, spaces, dots, commas, and hyphens', 'warning');
+        return;
+    }
+    if (!hasVowel(institution)) {
+        showNotification('Institution must contain at least one vowel', 'warning');
+        return;
+    }
+
+    // 3. Start Year – если указан, от 1950 до (текущий год + 10)
+    if (!isNaN(startYear)) {
+        const thisYear = new Date().getFullYear();
+        if (startYear < 1950 || startYear > thisYear + 10) {
+            showNotification(`Start Year must be between 1950 and ${thisYear + 10}`, 'warning');
+            return;
+        }
+    }
+
+    // 4. End Year – аналогично
+    if (!isNaN(endYear)) {
+        const thisYear = new Date().getFullYear();
+        if (endYear < 1950 || endYear > thisYear + 10) {
+            showNotification(`End Year must be between 1950 and ${thisYear + 10}`, 'warning');
+            return;
+        }
+    }
+
+    // 5. Порядок годов
+    if (!isNaN(startYear) && !isNaN(endYear) && startYear > endYear) {
+        showNotification('End Year cannot be before Start Year', 'warning');
+        return;
+    }
+
+    // 6. GPA – строго число (целое или десятичное)
+    if (gpa && !/^\d+(\.\d+)?$/.test(gpa)) {
+        showNotification('GPA must be a valid number (e.g., 3.4)', 'warning');
+        return;
+    }
+
+    const entry = {
+        degree,
+        institution,
+        startYear: isNaN(startYear) ? '' : startYear,
+        endYear: isNaN(endYear) ? '' : endYear,
+        gpa
     };
+
     if (!studentCV.education) studentCV.education = [];
-    if (editIdx !== null && editIdx !== 'null') studentCV.education[parseInt(editIdx)] = entry;
-    else studentCV.education.push(entry);
+    if (editIdx !== null && editIdx !== 'null') {
+        studentCV.education[parseInt(editIdx)] = entry;
+    } else {
+        studentCV.education.push(entry);
+    }
+
     localStorage.setItem(`qadam_cv_${currentUser.id}`, JSON.stringify(studentCV));
+    try {
+        await window.setDoc(window.doc(window.db, 'studentCVs', currentUser.id), studentCV);
+    } catch(e) {
+        console.error('Firestore CV save error:', e);
+    }
     showNotification('Education saved!', 'success');
     event.target.closest('.modal').remove();
     loadCV();
 }
 
-function deleteCVEducation(idx) {
+// ✅ Добавьте async:
+async function deleteCVEducation(idx) {
     if (!confirm('Delete this education entry?')) return;
     studentCV.education.splice(idx, 1);
     localStorage.setItem(`qadam_cv_${currentUser.id}`, JSON.stringify(studentCV));
+    try {
+        await window.setDoc(
+            window.doc(window.db, 'studentCVs', currentUser.id),
+            studentCV
+        );
+    } catch(e) { console.error('Firestore CV save error:', e); }
     loadCV();
 }
 
@@ -1007,10 +1484,16 @@ function loadProfileSettings() {
 function previewAvatar(event) {
     const file = event.target.files[0];
     if (!file) return;
-    
-    // ✅ Проверяем размер файла (максимум 1MB для base64)
-    if (file.size > 1024 * 1024) {
-        showNotification('Photo must be less than 1MB', 'warning');
+
+    // Проверка формата (только изображения)
+    if (!file.type.startsWith('image/')) {
+        showNotification('Only image files (JPG, PNG) are allowed', 'warning');
+        return;
+    }
+
+    // Увеличиваем лимит до 2MB (можно 5MB, но 2MB безопаснее)
+    if (file.size > 2 * 1024 * 1024) {
+        showNotification('Photo must be less than 2MB', 'warning');
         return;
     }
     
@@ -1120,31 +1603,76 @@ function loadMyCourses() {
         </div>
     `).join('')}</div>`;
 }
+async function withdrawApplication(appId) {
+    if (!confirm('Are you sure you want to withdraw this application?')) return;
 
-function loadApplications() {
+    try {
+        // Удаляем документ из Firestore
+        await window.deleteDoc(window.doc(window.db, 'applications', appId));
+        
+        // Удаляем из локального массива
+        applications = applications.filter(a => a.id !== appId);
+        
+        // Обновляем localStorage
+        localStorage.setItem(`qadam_apps_${currentUser.id}`, JSON.stringify(applications));
+        
+        // Обновляем UI
+        loadApplications();
+        showNotification('Application withdrawn', 'info');
+    } catch (err) {
+        console.error('Error withdrawing application:', err);
+        showNotification('Error withdrawing application: ' + err.message, 'error');
+    }
+}
+function loadApplications(filterStatus = 'all') {
     const container = document.getElementById('applicationsList');
     if (!container) return;
+
     if (applications.length === 0) { 
         container.innerHTML = '<div class="empty-state"><i class="fas fa-paper-plane"></i><p>You have no applications</p><button class="btn btn-primary" onclick="showSection(\'internships\')">Find internships</button></div>'; 
         return; 
     }
+
+    const filtered = filterStatus === 'all'
+        ? [...applications]
+        : applications.filter(a => a.status === filterStatus);
+
     container.innerHTML = `
-        <h3> My Applications (${applications.length})</h3>
-        <div class="applications-list">
-            ${applications.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(a=>`
-                <div class="application-item">
-                    <div class="application-status ${a.status}"></div>
-                    <div class="application-content">
-                        <h4>${escapeHtml(a.internshipTitle)}</h4>
-                        <p>${escapeHtml(a.company)}</p>
-                        <p class="application-date"><i class="fas fa-calendar"></i> Applied: ${formatDate(a.date)}</p>
-                    </div>
-                    <span class="status-badge ${a.status}">${getStatusLabel(a.status)}</span>
-                </div>
+        <h3> My Applications (${filtered.length})</h3>
+        <div class="tabs" style="margin-bottom:1.5rem;">
+            ${['all','pending','reviewed','interview','accepted','rejected'].map(s => `
+                <button class="tab ${filterStatus === s ? 'active' : ''}"
+                        onclick="loadApplications('${s}')">
+                    ${s === 'all' ? 'All' : getStatusLabel(s)}
+                </button>
             `).join('')}
+        </div>
+        <div class="applications-list">
+            ${filtered.length === 0
+                ? '<p style="color:var(--muted);text-align:center;padding:2rem;">Nothing in this category</p>'
+                : filtered.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(a=>`
+                    <div class="application-item">
+                        <div class="application-status ${a.status}"></div>
+                        <div class="application-content">
+                            <h4>${escapeHtml(a.internshipTitle)}</h4>
+                            <p>${escapeHtml(a.company)}</p>
+                            <p class="application-date"><i class="fas fa-calendar"></i> Applied: ${formatDate(a.date)}</p>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                            <span class="status-badge ${a.status}">${getStatusLabel(a.status)}</span>
+                            ${(a.status === 'pending' || a.status === 'reviewed') ? `
+                                <button class="btn btn-ghost btn-small" 
+                                        onclick="event.stopPropagation(); withdrawApplication('${a.id}')"
+                                        title="Withdraw application">
+                                    <i class="fas fa-undo-alt"></i> Withdraw
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('')
+            }
         </div>`;
 }
-
 async function loadSavedItems() {
     const container = document.getElementById('savedInternships');
     if (!container) return;
@@ -1195,23 +1723,73 @@ async function toggleSave(id) {
         if (document.getElementById('profileSavedCount')) document.getElementById('profileSavedCount').textContent = savedItems.length;
     } catch (err) { console.error('Error toggling save:', err); showNotification('Error saving internship', 'error'); }
 }
-
 async function applyForInternship(id) {
     if (!currentUser) { showNotification('Please sign in', 'warning'); openModal('login'); return; }
     if (currentUser.role === 'employer') { showNotification('Employers cannot apply', 'warning'); return; }
+
+    const applyBtn = document.getElementById('applyBtn');
+    if (applyBtn) {
+        applyBtn.disabled = true;
+        applyBtn.querySelector('span').textContent = 'Applying...';
+    }
+
     try {
         const internDoc = await window.getDoc(window.doc(window.db, 'internships', id));
         if (!internDoc.exists()) { showNotification('Internship not found', 'error'); return; }
         const internship = internDoc.data();
-        const existingQuery = window.query(window.collection(window.db, 'applications'), window.where('studentId', '==', currentUser.id), window.where('internshipId', '==', id));
+
+        // Проверка, не подавал ли уже этот студент заявку на эту стажировку
+        const existingQuery = window.query(
+            window.collection(window.db, 'applications'),
+            window.where('studentId', '==', currentUser.id),
+            window.where('internshipId', '==', id)
+        );
         const existingSnap = await window.getDocs(existingQuery);
-        if (!existingSnap.empty) { showNotification('Already applied', 'info'); return; }
-        await window.addDoc(window.collection(window.db, 'applications'), { studentId: currentUser.id, studentName: currentUser.name, studentEmail: currentUser.email, internshipId: id, internshipTitle: internship.title, company: internship.company, date: new Date().toISOString(), status: 'pending' });
-        applications.push({ id: Date.now(), internshipId: id, internshipTitle: internship.title, company: internship.company, studentName: currentUser.name, studentEmail: currentUser.email, date: new Date().toISOString(), status: 'pending' });
+        if (!existingSnap.empty) {
+            showNotification('You have already applied', 'info');
+            return;
+        }
+
+        const coverLetterEl = document.getElementById('coverLetterInput');
+        const coverLetter = coverLetterEl ? coverLetterEl.value.trim() : '';
+
+        // Создаём документ в Firestore и получаем реальный id
+        const newAppRef = await window.addDoc(window.collection(window.db, 'applications'), {
+            studentId: currentUser.id,
+            studentName: currentUser.name,
+            studentEmail: currentUser.email,
+            internshipId: id,
+            internshipTitle: internship.title,
+            company: internship.company,
+            coverLetter,
+            date: new Date().toISOString(),
+            status: 'pending'
+        });
+
+        // Добавляем в локальный массив (используем firebaseId, а не Date.now())
+        applications.push({
+            id: newAppRef.id,
+            internshipId: id,
+            internshipTitle: internship.title,
+            company: internship.company,
+            studentName: currentUser.name,
+            studentEmail: currentUser.email,
+            date: new Date().toISOString(),
+            status: 'pending'
+        });
+
         localStorage.setItem(`qadam_apps_${currentUser.id}`, JSON.stringify(applications));
         closeModal('internship');
         showNotification('Application sent successfully! 🎉', 'success');
-    } catch (err) { console.error('Error applying:', err); showNotification('Error: ' + err.message, 'error'); }
+    } catch (err) {
+        console.error('Error applying:', err);
+        showNotification('Error: ' + err.message, 'error');
+    } finally {
+        if (applyBtn) {
+            applyBtn.disabled = false;
+            applyBtn.querySelector('span').textContent = 'Apply';
+        }
+    }
 }
 
 async function enrollCourse(id) {
@@ -1347,23 +1925,213 @@ function closeChatModal(chatId) {
     if (modal) modal.remove();
 }
 
+// ==================== CHAT SYSTEM ====================
+let allChats = []; // храним все чаты для поиска
+
 async function loadMyChats() {
     const container = document.getElementById('chatsContent');
     if (!container) return;
+
     try {
-        const q = window.query(window.collection(window.db, 'chats'), window.where('participants', 'array-contains', currentUser.id));
+        const q = window.query(
+            window.collection(window.db, 'chats'),
+            window.where('participants', 'array-contains', currentUser.id)
+        );
         const snapshot = await window.getDocs(q);
-        const chats = [];
-        snapshot.forEach(doc => chats.push({ id: doc.id, ...doc.data() }));
-        chats.sort((a, b) => new Date(b.lastMessageTime || b.createdAt) - new Date(a.lastMessageTime || a.createdAt));
-        if (chats.length === 0) { container.innerHTML = '<div class="empty-state"><i class="fas fa-comments"></i><p>No messages yet</p></div>'; return; }
-        container.innerHTML = `<h3>Messages (${chats.length})</h3><div class="chats-list">${chats.map(c => `
-            <div class="chat-item" onclick="openExistingChat('${c.id}')">
-                <div class="chat-item-header"><strong>${currentUser.role === 'employer' ? escapeHtml(c.studentName) : escapeHtml(c.companyName)}</strong><small>${formatDate(c.lastMessageTime || c.createdAt)}</small></div>
-                <p class="chat-item-preview">${c.lastMessage ? escapeHtml(c.lastMessage.substring(0, 60)) + '...' : 'No messages'}</p>
-            </div>`).join('')}</div>`;
-    } catch (err) { container.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-circle"></i><p>Error loading messages</p></div>'; }
+        allChats = [];
+        snapshot.forEach(doc => allChats.push({ id: doc.id, ...doc.data() }));
+
+        allChats.sort((a, b) =>
+            new Date(b.lastMessageTime || b.createdAt) - new Date(a.lastMessageTime || a.createdAt)
+        );
+
+        renderChatsList(allChats, container);
+    } catch (err) {
+        console.error('Error loading chats:', err);
+        container.innerHTML = '<div class="empty-state"><p>Error loading messages</p></div>';
+    }
 }
+
+async function renderChatsList(chats, container) {
+    if (chats.length === 0) {
+        container.innerHTML = '<div class="empty-state"><i class="fas fa-comments"></i><p>No messages yet</p></div>';
+        return;
+    }
+
+    // Собираем ID всех собеседников
+    const interlocutorIds = new Set();
+    chats.forEach(chat => {
+        const otherId = chat.participants.find(id => id !== currentUser.id);
+        if (otherId) interlocutorIds.add(otherId);
+    });
+
+    // Получаем их lastSeen
+    const userStatuses = {};
+    if (interlocutorIds.size > 0) {
+        const userDocs = await Promise.all(
+            [...interlocutorIds].map(uid => window.getDoc(window.doc(window.db, 'users', uid)))
+        );
+        userDocs.forEach(doc => {
+            if (doc.exists()) {
+                const data = doc.data();
+                userStatuses[doc.id] = data.lastSeen || null;
+            }
+        });
+    }
+
+    const now = Date.now();
+
+    container.innerHTML = `
+        <h3 style="margin-bottom:1.5rem;">Messages (${chats.length})</h3>
+        <div class="search-box" style="margin-bottom:1rem;max-width:100%;">
+            <i class="fas fa-search"></i>
+            <input type="text" id="chatSearchInput" placeholder="Search by name..." oninput="filterChats()">
+        </div>
+        <div class="chats-list">
+            ${chats.map(chat => {
+                const isEmployer = currentUser.role === 'employer';
+                const name = isEmployer ? chat.studentName : (chat.companyName || chat.employerName);
+                const avatarLetter = (name || '?')[0].toUpperCase();
+                const otherId = chat.participants.find(id => id !== currentUser.id);
+                const lastSeen = userStatuses[otherId];
+                const isOnline = lastSeen && (now - new Date(lastSeen).getTime()) < 5 * 60 * 1000;
+                return `
+                <div class="chat-item" onclick="openChatModal('${chat.id}')">
+                    <div class="chat-avatar" style="position:relative;">
+                        ${avatarLetter}
+                        ${isOnline ? '<span class="online-dot"></span>' : ''}
+                    </div>
+                    <div class="chat-info">
+                        <div class="chat-name">${escapeHtml(name || 'Unknown')}</div>
+                        <div class="chat-preview">${escapeHtml(chat.lastMessage || 'No messages')}</div>
+                    </div>
+                    <div class="chat-meta">
+                        <div class="chat-date">${formatDate(chat.lastMessageTime || chat.createdAt)}</div>
+                    </div>
+                </div>`;
+            }).join('')}
+        </div>`;
+}
+
+function filterChats() {
+    const searchInput = document.getElementById('chatSearchInput');
+    const query = searchInput?.value?.toLowerCase().trim() || '';
+    const container = document.getElementById('chatsContent');
+    if (!container) return;
+
+    if (!query) {
+        renderChatsList(allChats, container);
+        return;
+    }
+
+    const filtered = allChats.filter(chat => {
+        const isEmployer = currentUser.role === 'employer';
+        const name = isEmployer ? chat.studentName : (chat.companyName || chat.employerName);
+        return name?.toLowerCase().includes(query);
+    });
+
+    renderChatsList(filtered, container);
+}
+
+async function openChatModal(chatId) {
+    const existing = document.getElementById('chatModal');
+    if (existing) existing.remove();
+
+    const chatSnap = await window.getDoc(window.doc(window.db, 'chats', chatId));
+    if (!chatSnap.exists()) return;
+    const chatData = chatSnap.data();
+
+    const modal = document.createElement('div');
+    modal.id = 'chatModal';
+    modal.className = 'chat-modal';
+    modal.innerHTML = `
+    <div class="chat-modal-content">
+        <button class="modal-close" onclick="closeChatModal('${chatId}')"><i class="fas fa-times"></i></button>
+        <div class="chat-modal-header">
+            <h2>${currentUser.role === 'employer' ? escapeHtml(chatData.studentName) : escapeHtml(chatData.companyName || chatData.employerName)}</h2>
+            <p>${currentUser.role === 'employer' ? escapeHtml(chatData.studentEmail) : escapeHtml(chatData.employerName)}</p>
+        </div>
+        <div class="chat-messages" id="chatMessages"><p class="chat-loading">Loading messages...</p></div>
+        
+        <!-- Вот сюда вставляем новый блок -->
+        <div class="chat-input-area">
+            <button class="emoji-btn" onclick="toggleEmojiPicker('${chatId}')" title="Emoji">😀</button>
+            <input type="text" id="chatMessageInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChatMessage('${chatId}')">            <button onclick="sendChatMessage('${chatId}')"><i class="fas fa-paper-plane"></i></button>
+        </div>
+        <div class="emoji-picker" id="emojiPicker" style="display:none;"></div>
+    </div>`;
+    document.body.appendChild(modal);
+
+    loadChatMessages(chatId);
+}
+
+async function loadChatMessages(chatId) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+
+    const q = window.query(
+        window.collection(window.db, 'chats', chatId, 'messages'),
+        window.orderBy('timestamp', 'asc')
+    );
+    const snapshot = await window.getDocs(q);
+    const messages = [];
+    snapshot.forEach(doc => messages.push({ id: doc.id, ...doc.data() }));
+
+    if (messages.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>No messages yet. Say hello! 👋</p></div>';
+        return;
+    }
+
+    container.innerHTML = messages.map(msg => `
+        <div class="message-bubble ${msg.senderId === currentUser.id ? 'message-sent' : 'message-received'}">
+            <div class="message-text">${escapeHtml(msg.text)}</div>
+            <div class="message-meta">
+                <span class="message-time">${new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                ${msg.senderId === currentUser.id ? `
+                <button class="msg-delete-btn" onclick="deleteMessage('${chatId}', '${msg.id}')" title="Delete message">
+                    <i class="fas fa-trash-alt"></i>
+                </button>` : ''}
+            </div>
+        </div>
+    `).join('');
+
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendChatMessage(chatId) {
+    const input = document.getElementById('chatMessageInput');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    try {
+        await window.addDoc(window.collection(window.db, 'chats', chatId, 'messages'), {
+            senderId: currentUser.id,
+            senderName: currentUser.name,
+            senderRole: currentUser.role,
+            text,
+            timestamp: new Date().toISOString()
+        });
+
+        await window.updateDoc(window.doc(window.db, 'chats', chatId), {
+            lastMessage: text,
+            lastMessageTime: new Date().toISOString()
+        });
+
+        input.value = '';
+        await loadChatMessages(chatId);
+    } catch (err) {
+        console.error('Error sending message:', err);
+        showNotification('Failed to send message', 'error');
+    }
+}
+
+function closeChatModal() {
+    const modal = document.getElementById('chatModal');
+    if (modal) modal.remove();
+}
+
+// Уже существующие openChatWithStudent / openChatWithEmployer должны работать
 
 async function openExistingChat(chatId) {
     try {
@@ -1371,7 +2139,63 @@ async function openExistingChat(chatId) {
         if (chatSnap.exists()) { openChatModal(chatId, { id: chatId, ...chatSnap.data() }); }
     } catch (err) { console.error('Error opening chat:', err); showNotification('Error opening chat', 'error'); }
 }
+function editSkill(skillName) {
+    const skill = studentPortfolio.skills.find(
+        s => (typeof s === 'string' ? s : s.name) === skillName
+    );
+    if (skill) {
+        openAddSkillModal(skill);
+    }
+}
+async function deleteMessage(chatId, msgId) {
+    if (!confirm('Delete this message?')) return;
 
+    try {
+        await window.deleteDoc(window.doc(window.db, 'chats', chatId, 'messages', msgId));
+        // Обновить lastMessage в чате при необходимости (опционально)
+        loadChatMessages(chatId);
+    } catch (err) {
+        console.error('Error deleting message:', err);
+        showNotification('Failed to delete message', 'error');
+    }
+}
+const EMOJI_LIST = ['😀','😂','😍','🥰','😎','🤔','👍','👎','❤️','🔥','🎉','💯',
+                    '😊','😢','😡','🥺','🙏','👋','💪','✨','🌟','⭐','⚡',
+                    '💡','📌','✏️','🗑️','📎','🔗','📁','📈','📊','🗓️','⏰'];
+
+function toggleEmojiPicker(chatId) {
+    const picker = document.getElementById('emojiPicker');
+    if (!picker) return;
+    if (picker.style.display === 'none' || picker.style.display === '') {
+        picker.innerHTML = EMOJI_LIST.map(emoji =>
+            `<span class="emoji-item" onclick="insertEmoji('${chatId}', '${emoji}')">${emoji}</span>`
+        ).join('');
+        picker.style.display = 'flex';
+    } else {
+        picker.style.display = 'none';
+    }
+}
+
+function insertEmoji(chatId, emoji) {
+    const input = document.getElementById('chatMessageInput');
+    if (input) {
+        input.value += emoji;
+        input.focus();
+    }
+    const picker = document.getElementById('emojiPicker');
+    if (picker) picker.style.display = 'none';
+}
+
+async function deleteMessage(chatId, msgId) {
+    if (!confirm('Delete this message?')) return;
+    try {
+        await window.deleteDoc(window.doc(window.db, 'chats', chatId, 'messages', msgId));
+        loadChatMessages(chatId);
+    } catch (err) {
+        console.error('Error deleting message:', err);
+        showNotification('Failed to delete message', 'error');
+    }
+}
 // ==================== GLOBAL EXPORTS ====================
 window.openAddProjectModal = openAddProjectModal;
 window.saveProject = saveProject;
@@ -1422,5 +2246,22 @@ window.sendMessage = sendMessage;
 window.closeChatModal = closeChatModal;
 window.loadMessages = loadMessages;
 window.findExistingChat = findExistingChat;
-window.loadMyChats = loadMyChats;
 window.openExistingChat = openExistingChat;
+window.editCertificate = function(id) {
+    const cert = studentPortfolio.certificates.find(c => c.id === id);
+    if (cert) {
+        openAddCertificateModal(cert);
+    }
+};
+window.editSkill = editSkill;
+window.withdrawApplication = withdrawApplication;
+window.downloadCVPDF = downloadCVPDF;
+window.loadMyChats = loadMyChats;
+window.sendChatMessage = sendChatMessage;
+window.deleteMessage = deleteMessage;
+
+window.toggleEmojiPicker = toggleEmojiPicker;
+window.insertEmoji = insertEmoji;
+window.loadChatMessages = loadChatMessages;
+window.openChatModal = openChatModal;
+window.filterChats = filterChats;

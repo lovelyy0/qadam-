@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Qadam — IT Career Launch Platform</title>
+  <!-- SEO & Open Graph (English) -->
+  <meta name="description" content="Qadam – IT career launch platform: internships, courses, events, mentorship.">
+  <meta name="keywords" content="IT internships, courses, events, IT career">
+  <title>Qadam - IT Career Launch Platform</title>
+  <meta property="og:title" content="Qadam - IT Career Launch Platform">
+  <meta property="og:description" content="Find internships, courses, or a mentor in IT.">
+  <meta property="og:image" content="https://your-domain.com/preview.jpg">
+  <meta property="og:url" content="https://your-domain.com">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
@@ -261,26 +269,26 @@
           </div>
           
           <!-- ВКЛАДКИ СООБЩЕНИЙ И РАБОТОДАТЕЛЯ -->
-          <div id="messagesTab" class="profile-tab hidden">
+          <div id="messagesTab" class="profile-tab">
             <div id="chatsContent"></div>
           </div>
-          <div id="employerDashboardTab" class="profile-tab hidden">
+          <div id="employerDashboardTab" class="profile-tab">
             <div id="employerDashboardContent"></div>
           </div>
-          <div id="employerInternshipsTab" class="profile-tab hidden">
+          <div id="employerInternshipsTab" class="profile-tab">
             <div id="employerInternshipsContent"></div>
           </div>
-          <div id="employerCoursesTab" class="profile-tab hidden">
+          <div id="employerCoursesTab" class="profile-tab">
             <div id="employerCoursesContent"></div>
           </div>
-          <div id="employerEventsTab" class="profile-tab hidden">
+          <div id="employerEventsTab" class="profile-tab">
             <div id="employerEventsContent"></div>
           </div>
-          <div id="employerApplicantsTab" class="profile-tab hidden">
+          <div id="employerApplicantsTab" class="profile-tab">
             <div id="employerApplicantsContent"></div>
           </div>
 <!-- ВКЛАДКА CONNECTIONS -->
-          <div id="connectionsTab" class="profile-tab hidden">
+          <div id="connectionsTab" class="profile-tab">
             <div id="connectionsContent"></div>
           </div>
         </div>
@@ -440,6 +448,7 @@
     messagingSenderId: "297881942246",
     appId: "1:297881942246:web:64620ebd7197b1f0e3e327"
   };
+  
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
@@ -465,24 +474,20 @@
   window.serverTimestamp = serverTimestamp;
   window.orderBy = orderBy;
   window.limit = limit;
-  window.signInWithEmailAndPassword = signInWithEmailAndPassword;
-  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
-  window.signOut = signOut;
-  window.onAuthStateChanged = onAuthStateChanged;
-  window.sendEmailVerification = sendEmailVerification;       // нужно импортировать
-  window.sendPasswordResetEmail = sendPasswordResetEmail;    // нужно импортировать
+  window.sendEmailVerification = sendEmailVerification;
+  window.sendPasswordResetEmail = sendPasswordResetEmail;
     console.log('✅ Firebase initialized successfully');
 </script>
 <!-- ========== КОНЕЦ БЛОКА FIREBASE ========== -->
 
 <!-- ========== ПОДКЛЮЧЕНИЕ JS ФАЙЛОВ ========== -->
+ <script src="src/js/validation.js"></script>
 <script src="src/js/state.js"></script>
 <script src="src/js/utils.js"></script>  <!-- Must be before ui.js -->
 <script src="src/js/ui.js"></script>
 <script src="src/js/auth.js"></script>
 <script src="src/js/student.js"></script>
 <script src="src/js/employer.js"></script>
-<script src="src/js/social.js"></script>
 <script src="src/js/app.js"></script>    <!-- Last, because it depends on everything -->
 </body>
 </html>

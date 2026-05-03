@@ -13,10 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         console.log('App init - portfolio loaded:', studentPortfolio);
     }
-    if (currentUser) {
-        updateUIForLoggedInUser();
-        updateNavigation();
-    }
     
     renderPopularInternships().catch(console.error);
     renderTestimonials();

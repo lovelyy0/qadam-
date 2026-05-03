@@ -1,6 +1,7 @@
 // ==================== EMPLOYER DASHBOARD ====================
 async function loadEmployerDashboard() {
-    const container = document.getElementById('employerDashboardContent');
+    // ФИКС: был 'employerDashboardContent', но createEmployerSections создаёт 'dashboardContent'
+    const container = document.getElementById('dashboardContent') || document.getElementById('employerDashboardContent');
     if (!container) return;
 
     try {
@@ -20,12 +21,15 @@ async function loadEmployerDashboard() {
         let totalApplicants = 0;
         let recentApps = [];
 
+        // ФИКС: Firestore не принимает 'in' с пустым массивом — кидает ошибку
+        // Проверка myIds.length > 0 уже есть, но добавляем ограничение в 10 элементов
+        // (Firestore лимит для 'in' — максимум 10 значений)
         if (myIds.length > 0) {
-            const appQ    = window.query(window.collection(window.db, 'applications'), window.where('internshipId', 'in', myIds));
+            const batchIds = myIds.slice(0, 10); // Firestore 'in' limit
+            const appQ    = window.query(window.collection(window.db, 'applications'), window.where('internshipId', 'in', batchIds));
             const appSnap = await window.getDocs(appQ);
             totalApplicants = appSnap.size;
             appSnap.forEach(doc => recentApps.push({ id: doc.id, ...doc.data() }));
-            // Сортируем по дате — последние 5
             recentApps.sort((a, b) => new Date(b.date) - new Date(a.date));
             recentApps = recentApps.slice(0, 5);
         }
@@ -157,7 +161,7 @@ async function loadEmployerInternships() {
 }
 
 // ==================== СОЗДАНИЕ СТАЖИРОВКИ ====================
-// ==================== СОЗДАНИЕ СТАЖИРОВКИ (ИСПРАВЛЕНО) ====================
+
 function openCreateInternshipModal() {
     // ФИКС 1: Проверяем, нет ли уже открытой модалки, и закрываем её
     const existingModal = document.getElementById('createInternshipModal');
@@ -195,7 +199,8 @@ function openCreateInternshipModal() {
                     </div>
                     <div class="form-group"><label>Title *</label><input type="text" id="newInternshipTitle" class="form-control" required></div>
                     <div class="form-group"><label>Location *</label><input type="text" id="newInternshipLocation" class="form-control" required></div>
-                    <div class="form-group"><label>Salary *</label><input type="text" id="newInternshipSalary" class="form-control" placeholder="150,000 – 200,000 ₸" required></div>
+                    <div class="form-group"><label>Salary min (₸) *</label><input type="number" id="newInternshipSalaryMin" class="form-control" placeholder="150000" min="0" required></div>
+                    <div class="form-group"><label>Salary max (₸) *</label><input type="number" id="newInternshipSalaryMax" class="form-control" placeholder="200000" min="0" required></div>
                     <div class="form-group"><label>Description *</label><textarea id="newInternshipDesc" class="form-control" rows="4" required></textarea></div>
                     <div class="form-group"><label>Requirements (comma separated) *</label><input type="text" id="newInternshipReqs" class="form-control" placeholder="React, TypeScript, Git" required></div>
                     <div class="form-group"><label>Deadline *</label><input type="date" id="newInternshipDeadline" class="form-control" min="${today}" required></div>
@@ -246,7 +251,8 @@ function openCreateInternshipModal() {
                     </div>
                     <div class="form-group"><label>Title *</label><input type="text" id="newInternshipTitle" class="form-control" required></div>
                     <div class="form-group"><label>Location *</label><input type="text" id="newInternshipLocation" class="form-control" required></div>
-                    <div class="form-group"><label>Salary *</label><input type="text" id="newInternshipSalary" class="form-control" placeholder="150,000 – 200,000 ₸" required></div>
+                    <div class="form-group"><label>Salary min (₸) *</label><input type="number" id="newInternshipSalaryMin" class="form-control" placeholder="150000" min="0" required></div>
+                    <div class="form-group"><label>Salary max (₸) *</label><input type="number" id="newInternshipSalaryMax" class="form-control" placeholder="200000" min="0" required></div>
                     <div class="form-group"><label>Description *</label><textarea id="newInternshipDesc" class="form-control" rows="4" required></textarea></div>
                     <div class="form-group"><label>Requirements (comma separated) *</label><input type="text" id="newInternshipReqs" class="form-control" placeholder="React, TypeScript, Git" required></div>
                     <div class="form-group"><label>Deadline *</label><input type="date" id="newInternshipDeadline" class="form-control" min="${today}" required></div>
@@ -293,23 +299,17 @@ function openCreateInternshipModal() {
 }
 
 // ФИКС: Функция закрытия модалки
+// Для каждой модалки сохранять обработчики и удалять их:
 function closeCreateInternshipModal() {
     const modal = document.getElementById('createInternshipModal');
     if (!modal) return;
     
-    // Очищаем обработчики
-    if (modal._handlers) {
-        modal.removeEventListener('click', modal._handlers.handleClose);
-        document.removeEventListener('keydown', modal._handlers.handleEscape);
-    }
+    // Удаляем все обработчики событий
+    const clone = modal.cloneNode(true);
+    modal.parentNode.replaceChild(clone, modal);
     
-    if (typeof closeAndDestroyModal === 'function') {
-        closeAndDestroyModal(modal);
-    } else {
-        modal.classList.remove('show');
-        document.body.style.overflow = '';
-        setTimeout(() => modal.remove(), 300);
-    }
+    document.body.style.overflow = '';
+    setTimeout(() => clone.remove(), 300);
 }
 
 async function handleCreateInternship(event) {
@@ -337,16 +337,17 @@ async function handleCreateInternship(event) {
 
 function fillFromTemplate(templateId) {
     const templates = {
-        frontend: { title:'Frontend Developer (React)', location:'Almaty', salary:'200,000 – 300,000 ₸', desc:'We are looking for a frontend intern to work on real projects with React, TypeScript, and modern tools.', reqs:'React, TypeScript, HTML/CSS, Git', duration:'3-6', type:'Frontend' },
-        backend:  { title:'Python Backend Developer', location:'Astana', salary:'220,000 – 280,000 ₸', desc:'Internship for Python developers. Work with Django, REST APIs, and databases.', reqs:'Python, Django, PostgreSQL, REST API', duration:'6+', type:'Backend' },
-        qa:       { title:'QA Engineer', location:'Remote', salary:'150,000 – 200,000 ₸', desc:'Looking for a detail-oriented QA intern. Learn manual and automated testing.', reqs:'Manual Testing, SQL, Jira, Postman', duration:'3-6', type:'QA' },
-        design:   { title:'UI/UX Designer', location:'Almaty', salary:'180,000 – 250,000 ₸', desc:'Design internship. Work on real products with experienced designers.', reqs:'Figma, Adobe XD, Prototyping, User Research', duration:'3-6', type:'UX/UI' }
+        frontend: { title:'Frontend Developer (React)', location:'Almaty', salaryMin: 200000, salaryMax: 300000, desc:'We are looking for a frontend intern to work on real projects with React, TypeScript, and modern tools.', reqs:'React, TypeScript, HTML/CSS, Git', duration:'3-6', type:'Frontend' },
+        backend:  { title:'Python Backend Developer', location:'Astana', salaryMin: 220000, salaryMax: 280000, desc:'Internship for Python developers. Work with Django, REST APIs, and databases.', reqs:'Python, Django, PostgreSQL, REST API', duration:'6+', type:'Backend' },
+        qa:       { title:'QA Engineer', location:'Remote', salaryMin: 150000, salaryMax: 200000, desc:'Looking for a detail-oriented QA intern. Learn manual and automated testing.', reqs:'Manual Testing, SQL, Jira, Postman', duration:'3-6', type:'QA' },
+        design:   { title:'UI/UX Designer', location:'Almaty', salaryMin: 180000, salaryMax: 250000, desc:'Design internship. Work on real products with experienced designers.', reqs:'Figma, Adobe XD, Prototyping, User Research', duration:'3-6', type:'UX/UI' }
     };
     const t = templates[templateId];
     if (!t) return;
     document.getElementById('newInternshipTitle').value    = t.title;
     document.getElementById('newInternshipLocation').value = t.location;
-    document.getElementById('newInternshipSalary').value   = t.salary;
+    document.getElementById('newInternshipSalaryMin').value = t.salaryMin;
+    document.getElementById('newInternshipSalaryMax').value = t.salaryMax;
     document.getElementById('newInternshipDesc').value     = t.desc;
     document.getElementById('newInternshipReqs').value     = t.reqs;
     document.getElementById('newInternshipDuration').value = t.duration;
@@ -356,59 +357,106 @@ function fillFromTemplate(templateId) {
 async function createInternship() {
     const title    = document.getElementById('newInternshipTitle')?.value?.trim();
     const location = document.getElementById('newInternshipLocation')?.value?.trim();
-    const salary   = document.getElementById('newInternshipSalary')?.value?.trim();
+    const salaryMin = parseInt(document.getElementById('newInternshipSalaryMin')?.value) || 0;
+    const salaryMax = parseInt(document.getElementById('newInternshipSalaryMax')?.value) || 0;
     const desc     = document.getElementById('newInternshipDesc')?.value?.trim();
     const reqs     = document.getElementById('newInternshipReqs')?.value?.trim();
     const deadline = document.getElementById('newInternshipDeadline')?.value;
-    const duration = document.getElementById('newInternshipDuration')?.value || '3-6';
-    const type     = document.getElementById('newInternshipType')?.value || 'Frontend';
 
-    if (!title || !location || !salary || !desc || !reqs || !deadline) {
-        showNotification('Please fill all required fields', 'warning');
-        throw new Error('Missing required fields'); // ← Возвращаем ошибку чтобы handleCreateInternship знал что что-то не так
+    // ---------- Валидация полей ----------
+    if (!validateField('newInternshipTitle', v => {
+        if (!v || v.trim().length < 5) return 'Title must be at least 5 characters';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        return null;
+    })) throw new Error('Invalid title');
+
+    if (!validateField('newInternshipLocation', v => {
+        if (!v || v.trim().length < 2) return 'Location is required';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        return null;
+    })) throw new Error('Invalid location');
+
+    if (isNaN(salaryMin) || isNaN(salaryMax) || salaryMin < 0 || salaryMax < 0) {
+        showNotification('Salary cannot be negative', 'warning');
+        throw new Error('Negative salary');
+    }
+    if (salaryMin > salaryMax) {
+        showNotification('Min salary cannot be greater than max', 'warning');
+        throw new Error('Invalid salary range');
+    }
+    // убрано дублирующее условие
+
+    if (!validateField('newInternshipDesc', v => {
+        if (!v || v.trim().length < 20) return 'Description must be at least 20 characters';
+        if (v.trim().length > 2000) return 'Description too long (max 2000 chars)';
+        return null;
+    })) throw new Error('Invalid description');
+
+    const requirements = reqs.split(',').map(s => s.trim()).filter(Boolean);
+    if (requirements.length < 2) {
+        showNotification('Add at least 2 requirements', 'warning');
+        throw new Error('Not enough requirements');
+    }
+    if (requirements.some(r => r.length < 2)) {
+        showNotification('Each requirement must be at least 2 characters', 'warning');
+        throw new Error('Invalid requirement');
     }
 
-    const today = new Date().toISOString().split('T')[0];
-    if (deadline < today) {
-        showNotification('Deadline cannot be in the past', 'warning');
-        throw new Error('Invalid deadline');
+    if (!validateField('newInternshipDeadline', v => {
+        if (!v) return 'Deadline is required';
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return 'Invalid date';
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        if (d <= today) return 'Deadline must be in the future';
+        const maxDate = new Date(today);
+        maxDate.setMonth(maxDate.getMonth() + 6);
+        if (d > maxDate) return 'Deadline must be within 6 months';
+        return null;
+    })) throw new Error('Invalid deadline');
+
+    // Проверка на дубликат
+    const duplicateQuery = window.query(
+        window.collection(window.db, 'internships'),
+        window.where('ownerId', '==', currentUser.id),
+        window.where('title', '==', title),
+        window.where('company', '==', currentUser.companyName || 'My Company'),
+        window.where('location', '==', location)
+    );
+    const duplicateSnap = await window.getDocs(duplicateQuery);
+    if (!duplicateSnap.empty) {
+        showNotification('You already have an internship with this title, company, and location', 'warning');
+        throw new Error('Duplicate internship');
     }
 
-    try {
-        const newDocRef = window.doc(window.collection(window.db, 'internships'));
-        await window.setDoc(newDocRef, {
-            id: newDocRef.id,
-            title,
-            company:      currentUser.companyName || 'My Company',
-            location,
-            salary,
-            salaryMin:    0,
-            salaryMax:    0,
-            description:  desc,
-            requirements: reqs.split(',').map(s => s.trim()).filter(Boolean),
-            deadline,
-            duration,
-            type,
-            ownerId:      currentUser.id,
-            ownerRole:    'employer',
-            posted:       today,
-            applicantsCount: 0,
-            views:        0,
-            createdAt:    new Date().toISOString()
-        });
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const salary = `${salaryMin.toLocaleString()} – ${salaryMax.toLocaleString()} ₸`;
 
-        // ✅ НЕ удаляем модалку здесь! Это сделает handleCreateInternship
-        
-        // ✅ Обновляем ВСЕ отображения
-        await refreshAllEmployerViews();
+    const newDocRef = window.doc(window.collection(window.db, 'internships'));
+    await window.setDoc(newDocRef, {
+        id: newDocRef.id,
+        title,
+        company: currentUser.companyName || 'My Company',
+        location,
+        salary,
+        description: desc,
+        requirements: requirements,
+        deadline,
+        duration: document.getElementById('newInternshipDuration')?.value || '3-6',
+        type: document.getElementById('newInternshipType')?.value || 'Frontend',
+        ownerId: currentUser.id,
+        ownerRole: 'employer',
+        posted: today.toISOString().split('T')[0],
+        applicantsCount: 0,
+        views: 0,
+        createdAt: new Date().toISOString()
+    });
 
-        showNotification('Internship created! 🎉', 'success');
-        
-    } catch (err) {
-        console.error('Error creating internship:', err);
-        showNotification('Error creating internship: ' + err.message, 'error');
-        throw err; // ← Пробрасываем ошибку дальше
-    }
+    await refreshAllEmployerViews();
+    showNotification('Internship created! 🎉', 'success');
 }
 
 // ✅ Новая функция для обновления всех view работодателя
@@ -498,20 +546,80 @@ async function editInternship(id) {
     }
 }
 
+// ==================== РЕДАКТИРОВАНИЕ СТАЖИРОВКИ (ОБНОВЛЕНИЕ) ====================
 async function updateInternship(id) {
+    const title    = document.getElementById('editInternshipTitle')?.value?.trim();
+    const location = document.getElementById('editInternshipLocation')?.value?.trim();
+    const salary   = document.getElementById('editInternshipSalary')?.value?.trim();
+    const desc     = document.getElementById('editInternshipDesc')?.value?.trim();
+    const reqs     = document.getElementById('editInternshipReqs')?.value?.trim();
+    const deadline = document.getElementById('editInternshipDeadline')?.value;
+
+    // Валидация Title
+    if (!validateField('editInternshipTitle', v => {
+        if (!v || v.trim().length < 5) return 'Title must be at least 5 characters';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        return null;
+    })) throw new Error('Invalid title');
+
+    // Валидация Location
+    if (!validateField('editInternshipLocation', v => {
+        if (!v || v.trim().length < 2) return 'Location is required';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        return null;
+    })) throw new Error('Invalid location');
+
+    // Валидация Salary
+    if (!validateField('editInternshipSalary', v => {
+        if (!v || v.trim().length < 1) return 'Salary is required';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        // Разрешены только цифры, пробелы, дефис, знак ₸ и точка
+        if (!/^[\d\s\-–₸.]+$/.test(v.trim()))
+            return 'Salary can only contain numbers, spaces, hyphen and ₸';
+        // Обязательно должна быть хотя бы одна цифра
+        if (!/\d/.test(v))
+            return 'Salary must contain at least one number';
+        return null;
+    })) throw new Error('Invalid salary');
+
+    // Валидация Description
+    if (!validateField('editInternshipDesc', v => {
+        if (!v || v.trim().length < 20) return 'Description must be at least 20 characters';
+        if (v.trim().length > 2000) return 'Description too long';
+        return null;
+    })) throw new Error('Invalid description');
+
+    // Requirements
+    const requirements = reqs.split(',').map(s => s.trim()).filter(Boolean);
+    if (requirements.length < 2) {
+        showNotification('Add at least 2 requirements', 'warning');
+        throw new Error('Not enough requirements');
+    }
+
+    // Deadline
+    if (!validateField('editInternshipDeadline', v => {
+        if (!v) return 'Deadline is required';
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return 'Invalid date';
+        if (d <= new Date()) return 'Deadline must be in the future';
+        return null;
+    })) throw new Error('Invalid deadline');
+
+    // Обновление в Firestore
     try {
         await window.updateDoc(window.doc(window.db, 'internships', id), {
-            title:        document.getElementById('editInternshipTitle').value.trim(),
-            location:     document.getElementById('editInternshipLocation').value.trim(),
-            salary:       document.getElementById('editInternshipSalary').value.trim(),
-            description:  document.getElementById('editInternshipDesc').value.trim(),
-            requirements: document.getElementById('editInternshipReqs').value.split(',').map(s => s.trim()).filter(Boolean),
-            deadline:     document.getElementById('editInternshipDeadline').value
+            title,
+            location,
+            salary,
+            description: desc,
+            requirements: requirements,
+            deadline
         });
-        // ФИКС: Закрываем правильный modal по id
         const modal = document.getElementById(`editInternshipModal_${id}`);
         if (modal) modal.remove();
-
         showNotification('Internship updated! ✅', 'success');
         loadEmployerInternships();
     } catch (err) {
@@ -607,19 +715,18 @@ async function updateApplicationStatus(appId, newStatus) {
 // ==================== КУРСЫ ====================
 async function loadCompanyCourses() {
     const container = document.getElementById('companyCoursesList');
-    if (!container) return;
+    const employerContainer = document.getElementById('employerCoursesContent'); // для профиля
+    if (!container && !employerContainer) return;
+
     try {
-        const q        = window.query(window.collection(window.db, 'courses'), window.where('ownerId', '==', currentUser.id));
+        const q = window.query(window.collection(window.db, 'courses'), window.where('ownerId', '==', currentUser.id));
         const snapshot = await window.getDocs(q);
-        const courses  = [];
+        const courses = [];
         snapshot.forEach(doc => courses.push({ id: doc.id, ...doc.data() }));
 
-        if (courses.length === 0) {
-            container.innerHTML = '<div class="empty-state"><i class="fas fa-book-open"></i><p>No courses yet</p></div>';
-            return;
-        }
-        container.innerHTML = `
-            <div class="courses-grid">
+        const html = courses.length === 0
+            ? '<div class="empty-state"><i class="fas fa-book-open"></i><p>No courses yet</p></div>'
+            : `<div class="courses-grid">
                 ${courses.map(c => `
                     <div class="course-card">
                         <div class="course-image"><span class="course-badge ${c.type}">${c.type === 'free' ? 'Free' : 'Paid'}</span></div>
@@ -638,11 +745,15 @@ async function loadCompanyCourses() {
                         </div>
                     </div>
                 `).join('')}
-            </div>
-        `;
+            </div>`;
+
+        if (container) container.innerHTML = html;
+        if (employerContainer) employerContainer.innerHTML = html;   // <-- заполняем профиль
     } catch (err) {
         console.error(err);
-        container.innerHTML = '<p style="color:var(--danger);">Error loading courses</p>';
+        const errorHtml = '<p style="color:var(--danger);">Error loading courses</p>';
+        if (container) container.innerHTML = errorHtml;
+        if (employerContainer) employerContainer.innerHTML = errorHtml;
     }
 }
 
@@ -668,13 +779,51 @@ function openCreateCourseModal() {
                 <div class="form-group"><label>Type</label>
                     <select id="newCourseType" class="form-control"><option value="free">Free</option><option value="paid">Paid</option></select>
                 </div>
+                <div class="form-group">
+                    <label>Course Image</label>
+                    <input type="file" id="newCourseImageFile" accept="image/*" class="form-control">
+                    <div id="imagePreview" style="margin-top: 10px; display: none;">
+                        <img id="previewImg" style="max-width: 100%; max-height: 120px; border-radius: 8px;">
+                    </div>
+                </div>
                 <div class="form-group"><label>Description *</label><textarea id="newCourseDesc" class="form-control" rows="4" required></textarea></div>
-                <button type="button" class="btn btn-primary btn-block" onclick="createCourse()">Create</button>
+                <button type="button" class="btn btn-primary btn-block" onclick="createCourseWithImage()">Create</button>
             </form>
         </div>
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    // Превью изображения
+    const fileInput = document.getElementById('newCourseImageFile');
+    const previewDiv = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('previewImg');
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                previewImg.src = event.target.result;
+                previewDiv.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        } else {
+            previewDiv.style.display = 'none';
+        }
+    });
+}
+async function createCourseWithImage() {
+    const title = document.getElementById('newCourseTitle')?.value?.trim();
+    const duration = document.getElementById('newCourseDuration')?.value?.trim();
+    const desc = document.getElementById('newCourseDesc')?.value?.trim();
+
+    if (!title || !duration || !desc) {
+        showNotification('Please fill required fields', 'warning');
+        return;
+    }
+
+    // For now, just create without image
+    await createCourse();
 }
 
 async function createCourse() {
@@ -682,39 +831,54 @@ async function createCourse() {
     const duration = document.getElementById('newCourseDuration')?.value?.trim();
     const desc     = document.getElementById('newCourseDesc')?.value?.trim();
 
-    if (!title || !duration || !desc) {
-        showNotification('Please fill all required fields', 'warning');
-        return;
+    if (!validateField('newCourseTitle', v => {
+        if (!v || v.trim().length < 3) return 'Title must be at least 3 characters';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        return null;
+    })) { throw new Error('Invalid title'); }
+
+    if (!validateField('newCourseDuration', v => {
+        if (!v || v.trim().length < 2) return 'Duration is required';
+        return null;
+    })) { throw new Error('Invalid duration'); }
+
+    if (!validateField('newCourseDesc', v => {
+        if (!v || v.trim().length < 10) return 'Description must be at least 10 characters';
+        return null;
+    })) { throw new Error('Invalid description'); }
+
+    const type = document.getElementById('newCourseType')?.value;
+    if (type === 'paid') {
+        const price = document.getElementById('newCoursePrice')?.value?.trim();
+        if (!price || isNaN(parseFloat(price)) || parseFloat(price) <= 0) {
+            showNotification('Please enter a valid price for paid course', 'warning');
+            throw new Error('Invalid price');
+        }
     }
 
-    try {
-        const newDocRef = window.doc(window.collection(window.db, 'courses'));
-        await window.setDoc(newDocRef, {
-            id:          newDocRef.id,
-            title,
-            provider:    currentUser.companyName || 'My Company',
-            duration,
-            level:       document.getElementById('newCourseLevel')?.value || 'Beginner',
-            price:       document.getElementById('newCoursePrice')?.value || 'Free',
-            type:        document.getElementById('newCourseType')?.value  || 'free',
-            description: desc,
-            students:    0,
-            rating:      0,
-            ownerId:     currentUser.id,
-            createdAt:   new Date().toISOString()
-        });
+    const newDocRef = window.doc(window.collection(window.db, 'courses'));
+    await window.setDoc(newDocRef, {
+        id: newDocRef.id,
+        title,
+        provider: currentUser.companyName || 'My Company',
+        duration,
+        level: document.getElementById('newCourseLevel')?.value || 'Beginner',
+        price: document.getElementById('newCoursePrice')?.value || 'Free',
+        type: type || 'free',
+        description: desc,
+        students: 0,
+        rating: 0,
+        ownerId: currentUser.id,
+        createdAt: new Date().toISOString()
+    });
 
-        // ФИКС: Закрываем правильный modal
-        const modal = document.getElementById('createCourseModal');
-        if (modal) modal.remove();
-
-        showNotification('Course created! 🎉', 'success');
-        loadCompanyCourses();
-    } catch (err) {
-        console.error(err);
-        showNotification('Error creating course: ' + err.message, 'error');
-    }
+    const modal = document.getElementById('createCourseModal');
+    if (modal) modal.remove();
+    showNotification('Course created! 🎉', 'success');
+    loadCompanyCourses();
 }
+
 
 // ФИКС: editCourse теперь загружает из Firestore, не из myCourses[]
 async function editCourse(id) {
@@ -746,23 +910,6 @@ async function editCourse(id) {
     }
 }
 
-// ФИКС: updateCourse теперь сохраняет в Firestore
-async function updateCourse(id) {
-    try {
-        await window.updateDoc(window.doc(window.db, 'courses', id), {
-            title:       document.getElementById('editCourseTitle').value.trim(),
-            duration:    document.getElementById('editCourseDuration').value.trim(),
-            description: document.getElementById('editCourseDesc').value.trim()
-        });
-        const modal = document.getElementById(`editCourseModal_${id}`);
-        if (modal) modal.remove();
-        showNotification('Course updated! ✅', 'success');
-        loadCompanyCourses();
-    } catch (err) {
-        console.error(err);
-        showNotification('Error updating course', 'error');
-    }
-}
 
 // ФИКС: deleteCourse теперь удаляет из Firestore
 async function deleteCourse(id) {
@@ -780,20 +927,18 @@ async function deleteCourse(id) {
 // ==================== СОБЫТИЯ ====================
 async function loadCompanyEvents() {
     const container = document.getElementById('companyEventsList');
-    if (!container) return;
+    const employerContainer = document.getElementById('employerEventsContent'); // для профиля
+    if (!container && !employerContainer) return;
+
     try {
         const q = window.query(window.collection(window.db, 'events'), window.where('ownerId', '==', currentUser.id));
         const snapshot = await window.getDocs(q);
-        // ФИКС: Переименовали локальную переменную — не shadowing глобальной myEvents
         const ownerEventsList = [];
         snapshot.forEach(doc => ownerEventsList.push({ id: doc.id, ...doc.data() }));
 
-        if (ownerEventsList.length === 0) {
-            container.innerHTML = '<div class="empty-state"><i class="fas fa-calendar"></i><p>No events yet</p></div>';
-            return;
-        }
-        container.innerHTML = `
-            <div class="events-grid">
+        const html = ownerEventsList.length === 0
+            ? '<div class="empty-state"><i class="fas fa-calendar"></i><p>No events yet</p></div>'
+            : `<div class="events-grid">
                 ${ownerEventsList.map(e => `
                     <div class="event-card">
                         <div class="event-date">
@@ -813,11 +958,15 @@ async function loadCompanyEvents() {
                         </div>
                     </div>
                 `).join('')}
-            </div>
-        `;
+            </div>`;
+
+        if (container) container.innerHTML = html;
+        if (employerContainer) employerContainer.innerHTML = html;   // <-- заполняем профиль
     } catch (err) {
         console.error(err);
-        container.innerHTML = '<p style="color:var(--danger);">Error loading events</p>';
+        const errorHtml = '<p style="color:var(--danger);">Error loading events</p>';
+        if (container) container.innerHTML = errorHtml;
+        if (employerContainer) employerContainer.innerHTML = errorHtml;
     }
 }
 
@@ -845,7 +994,7 @@ function openCreateEventModal() {
                     </select>
                 </div>
                 <div class="form-group"><label>Description *</label><textarea id="newEventDesc" class="form-control" rows="4" required></textarea></div>
-                <button type="button" class="btn btn-primary btn-block" onclick="createEvent()">Create</button>
+                <button type="button" class="btn btn-primary btn-block" onclick="window.createEvent()">Create</button>
             </form>
         </div>
     `;
@@ -862,34 +1011,113 @@ async function createEvent() {
     const location = document.getElementById('newEventLocation')?.value?.trim();
     const desc     = document.getElementById('newEventDesc')?.value?.trim();
 
-    if (!title || !date || !time || !location || !desc) {
-        showNotification('Please fill all required fields', 'warning');
+    if (!validateField('newEventTitle', v => {
+        if (!v || v.trim().length < 3) return 'Title must be at least 3 characters';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        return null;
+    })) { throw new Error('Invalid title'); }
+
+    if (!validateField('newEventDate', v => {
+        if (!v) return 'Date is required';
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return 'Invalid date format';
+        if (d <= new Date()) return 'Date must be in the future';
+        return null;
+    })) { throw new Error('Invalid date'); }
+
+    if (!time) {
+        showNotification('Time is required', 'warning');
+        throw new Error('Invalid time');
+    }
+
+    if (!validateField('newEventLocation', v => {
+        if (!v || v.trim().length < 2) return 'Location is required';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        return null;
+    })) { throw new Error('Invalid location'); }
+
+    if (!validateField('newEventDesc', v => {
+        if (!v || v.trim().length < 10) return 'Description must be at least 10 characters';
+        return null;
+    })) { throw new Error('Invalid description'); }
+
+    const newDocRef = window.doc(window.collection(window.db, 'events'));
+    await window.setDoc(newDocRef, {
+        id: newDocRef.id,
+        title,
+        date,
+        time,
+        location,
+        type: document.getElementById('newEventType')?.value || 'meetup',
+        description: desc,
+        participants: 0,
+        organizer: currentUser.companyName || currentUser.name,
+        ownerId: currentUser.id,
+        createdAt: new Date().toISOString()
+    });
+
+    const modal = document.getElementById('createEventModal');
+    if (modal) modal.remove();
+    showNotification('Event created! 🎉', 'success');
+    loadCompanyEvents();
+}
+
+async function updateEvent(id) {
+    const title    = document.getElementById('editEventTitle')?.value?.trim();
+    const date     = document.getElementById('editEventDate')?.value;
+    const time     = document.getElementById('editEventTime')?.value;
+    const location = document.getElementById('editEventLocation')?.value?.trim();
+    const desc     = document.getElementById('editEventDesc')?.value?.trim();
+
+    if (!validateField('editEventTitle', v => {
+        if (!v || v.trim().length < 3) return 'Title must be at least 3 characters';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        return null;
+    })) return;
+
+    if (!validateField('editEventDate', v => {
+        if (!v) return 'Date is required';
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return 'Invalid date';
+        if (d <= new Date()) return 'Date must be in the future';
+        return null;
+    })) return;
+
+    if (!time) {
+        showNotification('Time is required', 'warning');
         return;
     }
 
+    if (!validateField('editEventLocation', v => {
+        if (!v || v.trim().length < 2) return 'Location is required';
+        const sp = QadamValidators.noSpecialChars(v);
+        if (sp) return sp;
+        return null;
+    })) return;
+
+    if (!validateField('editEventDesc', v => {
+        if (!v || v.trim().length < 10) return 'Description must be at least 10 characters';
+        return null;
+    })) return;
+
     try {
-        const newDocRef = window.doc(window.collection(window.db, 'events'));
-        await window.setDoc(newDocRef, {
-            id:           newDocRef.id,
+        await window.updateDoc(window.doc(window.db, 'events', id), {
             title,
             date,
             time,
             location,
-            type:         document.getElementById('newEventType')?.value || 'meetup',
-            description:  desc,
-            participants: 0,
-            organizer:    currentUser.companyName || currentUser.name,
-            ownerId:      currentUser.id,
-            createdAt:    new Date().toISOString()
+            description: desc
         });
-
-        const modal = document.getElementById('createEventModal');
+        const modal = document.getElementById(`editEventModal_${id}`);
         if (modal) modal.remove();
-        showNotification('Event created! 🎉', 'success');
+        showNotification('Event updated! ✅', 'success');
         loadCompanyEvents();
     } catch (err) {
         console.error(err);
-        showNotification('Error creating event: ' + err.message, 'error');
+        showNotification('Error updating event', 'error');
     }
 }
 
@@ -924,24 +1152,7 @@ async function editEvent(id) {
     }
 }
 
-async function updateEvent(id) {
-    try {
-        await window.updateDoc(window.doc(window.db, 'events', id), {
-            title:       document.getElementById('editEventTitle').value.trim(),
-            date:        document.getElementById('editEventDate').value,
-            time:        document.getElementById('editEventTime').value,
-            location:    document.getElementById('editEventLocation').value.trim(),
-            description: document.getElementById('editEventDesc').value.trim()
-        });
-        const modal = document.getElementById(`editEventModal_${id}`);
-        if (modal) modal.remove();
-        showNotification('Event updated! ✅', 'success');
-        loadCompanyEvents();
-    } catch (err) {
-        console.error(err);
-        showNotification('Error updating event', 'error');
-    }
-}
+
 
 async function deleteEvent(id) {
     if (!confirm('Delete this event?')) return;
@@ -1010,7 +1221,9 @@ async function loadEmployerApplicants() {
         const myIds = myList.map(i => i.id);
         let allApps = [];
         if (myIds.length > 0) {
-            const appQ    = window.query(window.collection(window.db, 'applications'), window.where('internshipId', 'in', myIds));
+            // ФИКС: Firestore 'in' принимает максимум 10 значений
+            const batchIds = myIds.slice(0, 10);
+            const appQ    = window.query(window.collection(window.db, 'applications'), window.where('internshipId', 'in', batchIds));
             const appSnap = await window.getDocs(appQ);
             appSnap.forEach(doc => allApps.push({ id: doc.id, ...doc.data() }));
         }

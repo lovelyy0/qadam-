@@ -1,13 +1,5 @@
 // ==================== UI FUNCTIONS ====================
-// Простые индикаторы загрузки
-function showLoader() {
-    const loader = document.getElementById('globalLoader');
-    if (loader) loader.style.display = 'flex';
-}
-function hideLoader() {
-    const loader = document.getElementById('globalLoader');
-    if (loader) loader.style.display = 'none';
-}
+
 
 // ==================== ОСНОВНЫЕ ФУНКЦИИ ====================
 
@@ -113,8 +105,8 @@ function showSection(section) {
             case 'events': loadEvents(); break;
             case 'resources': loadResources(); break;
             case 'profile': loadProfile(); break;
-            case 'saved': loadSavedItemsPage(); break;
-            case 'applications': loadApplicationsPage(); break;
+            // case 'saved': loadSavedItemsPage(); break;
+            // case 'applications': loadApplicationsPage(); break;
             // ФИКС: Правильная загрузка dashboard в зависимости от роли
             case 'dashboard': 
                 if (currentUser?.role === 'employer' && typeof loadEmployerDashboard === 'function') {
@@ -132,6 +124,16 @@ function showSection(section) {
             case 'companyEvents': 
                 if (typeof loadCompanyEvents === 'function') loadCompanyEvents(); 
                 break;
+            case 'saved':
+                // перенаправляем в профиль и активируем вкладку Saved
+                showSection('profile');
+                setTimeout(() => showProfileTab('saved'), 150);
+                break;
+            case 'applications':
+                // перенаправляем в профиль и активируем вкладку Applications
+                showSection('profile');
+                setTimeout(() => showProfileTab('applications'), 150);
+                break;    
         }
     }, 100);
 }
@@ -186,19 +188,6 @@ function createEmployerSections() {
     main.appendChild(companyEventsSection);
 }
 
-
-async function fetchInternshipByIdFromFirestore(id) {
-    try {
-        const docSnap = await window.getDoc(window.doc(window.db, 'internships', id));
-        if (docSnap.exists()) {
-            return { id: docSnap.id, ...docSnap.data() };
-        }
-        return null;
-    } catch (error) {
-        console.error('Error fetching internship:', error);
-        return null;
-    }
-}
 
 // ==================== СТАЖИРОВКИ ====================
 
@@ -370,17 +359,22 @@ async function openInternshipDetail(id) {
         actionsHtml = `<button class="btn btn-primary btn-large" onclick="openModal('login');closeModal('internship')"><i class="fas fa-sign-in-alt"></i> Sign in to apply</button>`;
     } else if (currentUser.role === 'student') {
         const employerId = i.ownerId;
-        
         actionsHtml = `
-            <button class="btn btn-primary btn-large" onclick="applyForInternship('${i.id}')">
-                <i class="fas fa-paper-plane"></i><span>Apply</span>
-            </button>
-            <button class="btn btn-outline btn-large" onclick="openChatWithEmployer('${employerId}', '${escapeHtml(i.company)}', '${escapeHtml(i.company)}')">
-                <i class="fas fa-comment"></i><span>Message</span>
-            </button>
-            <button class="btn ${isSaved ? 'btn-ghost' : 'btn-outline'} btn-large" onclick="toggleSave('${i.id}');closeModal('internship')">
-                <i class="fas fa-star"></i><span>${isSaved ? 'Saved' : 'Save'}</span>
-            </button>
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label>Cover Letter (optional)</label>
+                <textarea id="coverLetterInput" class="form-control" rows="3" placeholder="Briefly explain why you're a good fit..."></textarea>
+            </div>
+            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+                <button class="btn btn-primary btn-large" id="applyBtn" onclick="applyForInternship('${i.id}')">
+                    <i class="fas fa-paper-plane"></i><span>Apply</span>
+                </button>
+                <button class="btn btn-outline btn-large" onclick="openChatWithEmployer('${employerId}', '${escapeHtml(i.company)}', '${escapeHtml(i.company)}')">
+                    <i class="fas fa-comment"></i><span>Message</span>
+                </button>
+                <button class="btn ${isSaved ? 'btn-ghost' : 'btn-outline'} btn-large" onclick="toggleSave('${i.id}');closeModal('internship')">
+                    <i class="fas fa-star"></i><span>${isSaved ? 'Saved' : 'Save'}</span>
+                </button>
+            </div>
         `;
     } else if (currentUser.role === 'employer') {
         if (i.ownerId === currentUser.id) {
@@ -685,26 +679,48 @@ function loadProfile() {
     
     document.getElementById('profileDisplayName').textContent = currentUser.name || '';
     document.getElementById('profileDisplayEmail').textContent = currentUser.email || '';
-    document.getElementById('profileAvatar').textContent = getInitials(currentUser.name);
+    const profileAvatar = document.getElementById('profileAvatar');
+        if (profileAvatar) {
+            if (currentUser.avatarUrl) {
+                profileAvatar.innerHTML = `<img src="${escapeHtml(currentUser.avatarUrl)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+            } else {
+                profileAvatar.textContent = getInitials(currentUser.name);
+            }
+        }
     
-    updateProfileStats();
     
-    // Скрываем ВСЕ вкладки сначала
+    
+    // Сначала скрываем ВСЕ вкладки
     document.querySelectorAll('.profile-tab').forEach(el => {
-        el.classList.add('hidden');
         el.classList.remove('active');
     });
     
     if (currentUser.role === 'student') {
         updateStudentTabs();
-        document.getElementById('dashboardTab').classList.remove('hidden');
-        document.getElementById('dashboardTab').classList.add('active');
-        loadStudentDashboard();
+        // Показываем dashboard вкладку
+        const dt = document.getElementById('dashboardTab');
+        if (dt) {
+            dt.classList.add('active');
+            // ЯВНО вызываем загрузку контента
+            if (typeof loadStudentDashboard === 'function') {
+                loadStudentDashboard();
+            }
+        }
     } else if (currentUser.role === 'employer') {
         updateEmployerTabs();
-        document.getElementById('employerDashboardTab').classList.remove('hidden');
-        document.getElementById('employerDashboardTab').classList.add('active');
-        loadEmployerDashboard();
+        const internshipsTab = document.getElementById('employerInternshipsTab');
+        if (internshipsTab) {
+            internshipsTab.classList.add('active');
+            if (typeof loadEmployerInternships === 'function') {
+                loadEmployerInternships();
+            }
+        }
+        if (edt) {
+            edt.classList.add('active');
+            if (typeof loadEmployerDashboard === 'function') {
+                loadEmployerDashboard();
+            }
+        }
     }
 }
 
@@ -779,6 +795,8 @@ function updateStudentTabs() {
         `;
     }
 }
+   
+
 
 // ФИКС: Добавлена кнопка Messages в табы работодателя
 function updateEmployerTabs() {
@@ -786,7 +804,7 @@ function updateEmployerTabs() {
     if (!tabsContainer) return;
     
     tabsContainer.innerHTML = `
-        <button class="tab-btn active" onclick="showEmployerProfileTab('dashboard')"><i class="fas fa-chart-pie"></i><span>Dashboard</span></button>
+        
         <button class="tab-btn" onclick="showEmployerProfileTab('internships')"><i class="fas fa-briefcase"></i><span>Internships</span></button>
         <button class="tab-btn" onclick="showEmployerProfileTab('courses')"><i class="fas fa-book-open"></i><span>Courses</span></button>
         <button class="tab-btn" onclick="showEmployerProfileTab('events')"><i class="fas fa-calendar-alt"></i><span>Events</span></button>
@@ -811,13 +829,12 @@ function updateEmployerTabs() {
 function showProfileTab(tab) {
     console.log('Opening tab:', tab);
     
-    // 1. Скрываем ВСЕ вкладки и убираем active
+    // 1. Hide ALL tabs — using only .active (avoid .hidden which has !important and breaks CSS)
     document.querySelectorAll('.profile-tab').forEach(el => {
-        el.classList.add('hidden');
         el.classList.remove('active');
     });
     
-    // 2. Показываем нужную вкладку
+    // 2. Show the requested tab
     const tabId = tab + 'Tab';
     const tabElement = document.getElementById(tabId);
     
@@ -826,7 +843,6 @@ function showProfileTab(tab) {
         return;
     }
     
-    tabElement.classList.remove('hidden');
     tabElement.classList.add('active');
     console.log('Tab shown:', tabId);
     
@@ -879,6 +895,9 @@ function showProfileTab(tab) {
         case 'messages':
             if (typeof loadMyChats === 'function') loadMyChats();
             break;
+        case 'connections':
+            if (typeof loadConnections === 'function') loadConnections();
+            break;
         default:
             console.warn('Unknown tab:', tab);
     }
@@ -887,9 +906,8 @@ function showProfileTab(tab) {
 function showEmployerProfileTab(tab) {
     console.log('Opening employer tab:', tab);
     
-    // Скрываем все вкладки и убираем active
+    // Hide all tabs — using only .active (no .hidden which would break CSS with !important)
     document.querySelectorAll('.profile-tab').forEach(el => {
-        el.classList.add('hidden');
         el.classList.remove('active');
     });
     
@@ -906,7 +924,6 @@ function showEmployerProfileTab(tab) {
     // Показываем нужную вкладку
     const tabEl = document.getElementById(tabId);
     if (tabEl) {
-        tabEl.classList.remove('hidden');
         tabEl.classList.add('active');
         console.log('Employer tab shown:', tabId);
     } else {
@@ -951,4 +968,14 @@ window.showProfileTab = showProfileTab;
 window.showEmployerProfileTab = showEmployerProfileTab;
 window.updateStudentTabs = updateStudentTabs;
 window.updateEmployerTabs = updateEmployerTabs;
-window.updateProfile = updateProfile;
+// ==================== CONNECTIONS (stub — extend as needed) ====================
+function loadConnections() {
+    const container = document.getElementById('connectionsContent');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="empty-state">
+            <i class="fas fa-users"></i>
+            <h3>Connections</h3>
+            <p>Connect with mentors and other students. Coming soon!</p>
+        </div>`;
+}

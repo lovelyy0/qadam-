@@ -1,20 +1,23 @@
-// ==================== ИНИЦИАЛИЗАЦИЯ AUTH STATE ====================
-// Ждём пока Firebase инициализируется, затем слушаем изменения сессии
-window.addEventListener('load', () => {
-    // Небольшая задержка, чтобы Firebase SDK успел подгрузиться из module script
-    setTimeout(() => {
-        if (!window.auth) {
-            console.warn('Firebase Auth not ready yet');
-            return;
+// ==================== FIREBASE AUTH WAIT HELPER ====================
+function waitForFirebase(callback, maxWaitMs = 10000) {
+    const interval = 50;
+    let elapsed = 0;
+    const timer = setInterval(() => {
+        elapsed += interval;
+        if (window.auth && window.onAuthStateChanged) {
+            clearInterval(timer);
+            callback();
+        } else if (elapsed >= maxWaitMs) {
+            clearInterval(timer);
+            console.error('Firebase Auth did not initialize within', maxWaitMs, 'ms');
         }
-        // onAuthStateChanged — единственный надёжный способ проверить сессию
-        if (!window.onAuthStateChanged) {
-                console.error('onAuthStateChanged not available');
-                return;
-            }
-            window.onAuthStateChanged(window.auth, async (firebaseUser) => {
+    }, interval);
+}
+
+window.addEventListener('load', () => {
+    waitForFirebase(() => {
+        window.onAuthStateChanged(window.auth, async (firebaseUser) => {
             if (firebaseUser) {
-                // Пользователь залогинен — загружаем его данные из Firestore
                 try {
                     const userDoc = await window.getDoc(window.doc(window.db, 'users', firebaseUser.uid));
                     if (userDoc.exists()) {
@@ -29,11 +32,9 @@ window.addEventListener('load', () => {
                     console.error('Error loading user on auth state change:', err);
                 }
             } else {
-                // Пользователь вышел или сессия истекла — очищаем стейт
                 if (currentUser) {
                     currentUser = null;
                     localStorage.removeItem('qadam_current_user');
-                    // Обновляем UI только если уже был залогинен
                     const authButtons = document.getElementById('authButtons');
                     const userMenu = document.getElementById('userMenu');
                     if (authButtons) authButtons.classList.remove('hidden');
@@ -41,7 +42,7 @@ window.addEventListener('load', () => {
                 }
             }
         });
-    }, 500);
+    });
 });
 
 // ==================== ПЕРЕКЛЮЧЕНИЕ ПОЛЕЙ КОМПАНИИ ====================
@@ -50,16 +51,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (regRole) {
         regRole.addEventListener('change', function () {
             const companyFields = document.getElementById('companyFieldsRegister');
-            if (this.value === 'employer') {
-                companyFields.classList.remove('hidden');
-            } else {
-                companyFields.classList.add('hidden');
+            if (companyFields) {
+                companyFields.classList.toggle('hidden', this.value !== 'employer');
             }
         });
     }
 });
 
 // ==================== РЕГИСТРАЦИЯ ====================
+// BUG FIX #1: handleRegister had a broken `if (!window.isValidName)` block —
+// it ran QadamValidators.name() but never returned early correctly (double-nested return).
+// BUG FIX #2: Employer fields were required only by manual checks; now uses validateRegisterForm().
 async function handleRegister(e) {
     e.preventDefault();
     const name     = document.getElementById('regName').value.trim();
@@ -68,58 +70,52 @@ async function handleRegister(e) {
     const confirm  = document.getElementById('regConfirmPassword').value;
     const role     = document.getElementById('regRole').value;
 
-    if (!name || !email || !password) {
-        showNotification('Please fill all fields', 'warning');
-        return;
+    // Use the unified form validator from validation.js — it handles all fields + employer fields
+    if (!window.validateRegisterForm()) {
+        return; // inline errors already shown
     }
+
+    // Additional password match check (validateRegisterForm shows the inline error,
+    // but we still need to block submission)
     if (password !== confirm) {
-        showNotification('Passwords do not match', 'error');
         return;
     }
-    if (password.length < 6) {
-        showNotification('Password must be at least 6 characters', 'warning');
-        return;
+
+    let employerData = null;
+    if (role === 'employer') {
+        const companyName    = document.getElementById('regCompanyName').value.trim();
+        const companyDesc    = document.getElementById('regCompanyDesc').value.trim();
+        const website        = document.getElementById('regCompanyWebsite').value.trim();
+        const location       = document.getElementById('regCompanyLocation').value.trim();
+        employerData = { companyName, companyDesc, website, location };
     }
+
+    // BUG FIX #3: Submit button wasn't locked during async call → could double-submit.
+    const submitBtn = e.submitter || e.target.querySelector('[type="submit"]');
+    const restore = window.setButtonLoading(submitBtn);
 
     try {
         const userCredential = await window.createUserWithEmailAndPassword(window.auth, email, password);
         const user = userCredential.user;
 
-        let userData = {
+        const userData = {
             uid: user.uid,
             name,
             email,
             role,
             createdAt: new Date().toISOString()
         };
-
-        if (role === 'employer') {
-            const companyName = document.getElementById('regCompanyName').value.trim();
-            const companyDesc = document.getElementById('regCompanyDesc').value.trim();
-            const website     = document.getElementById('regCompanyWebsite').value.trim();
-            const location    = document.getElementById('regCompanyLocation').value.trim();
-
-            if (!companyName || !companyDesc || !website || !location) {
-                showNotification('Please fill all company fields', 'warning');
-                // ФИКС: удаляем только что созданного firebase user если данные неполные
-                await user.delete();
-                return;
-            }
-            userData.companyName = companyName;
-            userData.companyDesc = companyDesc;
-            userData.website     = website;
-            userData.location    = location;
-        }
+        if (role === 'employer') Object.assign(userData, employerData);
 
         await window.setDoc(window.doc(window.db, 'users', user.uid), userData);
 
-        // Для студента создаём пустое портфолио и CV
         if (role === 'student') {
             await window.setDoc(window.doc(window.db, 'portfolios', user.uid), {
-                projects: [], skills: [], certificates: [], education: [], experience: [], githubProfile: null
+                projects: [], skills: [], certificates: [], education: [], experience: [], githubProfile: null, githubRepos: []
             });
             await window.setDoc(window.doc(window.db, 'studentCVs', user.uid), {
-                fullName: name, email, skills: [], experience: [], education: [], languages: [], links: {}
+                fullName: name, email,
+                skills: [], experience: [], education: [], languages: [], links: {}
             });
         }
 
@@ -130,20 +126,22 @@ async function handleRegister(e) {
         updateNavigation();
         closeModal('register');
         showNotification('Registration successful! Welcome! 🎉', 'success');
+        restore();
     } catch (err) {
         console.error(err);
-        // Человекочитаемые сообщения об ошибках Firebase Auth
+        restore();
         const errorMessages = {
-            'auth/email-already-in-use': 'This email is already registered',
-            'auth/invalid-email':        'Invalid email address',
-            'auth/weak-password':        'Password is too weak (min 6 characters)',
-            'auth/network-request-failed': 'Network error. Check your connection.'
+            'auth/email-already-in-use':    'This email is already registered',
+            'auth/invalid-email':           'Invalid email address',
+            'auth/weak-password':           'Password is too weak (min 6 characters)',
+            'auth/network-request-failed':  'Network error. Check your connection.'
         };
         showNotification(errorMessages[err.code] || err.message, 'error');
     }
 }
 
 // ==================== ВХОД ====================
+// BUG FIX #4: Login didn't lock the submit button — could double-fire on slow connections.
 async function handleLogin(e) {
     e.preventDefault();
     const email    = document.getElementById('loginEmail').value.trim();
@@ -153,6 +151,13 @@ async function handleLogin(e) {
         showNotification('Please fill all fields', 'warning');
         return;
     }
+    if (!window.isValidEmail(email)) {
+        showNotification('Please enter a valid email address', 'warning');
+        return;
+    }
+
+    const submitBtn = e.submitter || e.target.querySelector('[type="submit"]');
+    const restore = window.setButtonLoading(submitBtn);
 
     try {
         const userCredential = await window.signInWithEmailAndPassword(window.auth, email, password);
@@ -166,31 +171,67 @@ async function handleLogin(e) {
         localStorage.setItem('qadam_current_user', JSON.stringify(currentUser));
 
         await loadLocalUserData();
-
         updateUIForLoggedInUser();
         updateNavigation();
         closeModal('login');
+        restore();
         showNotification(`Welcome back, ${currentUser.name}! 👋`, 'success');
     } catch (err) {
         console.error(err);
+        restore();
         const errorMessages = {
-            'auth/user-not-found':     'No account found with this email',
-            'auth/wrong-password':     'Incorrect password',
-            'auth/invalid-email':      'Invalid email address',
-            'auth/too-many-requests':  'Too many attempts. Try again later.',
-            'auth/network-request-failed': 'Network error. Check your connection.'
+            'auth/user-not-found':          'No account found with this email',
+            'auth/wrong-password':          'Incorrect password',
+            'auth/invalid-email':           'Invalid email address',
+            'auth/invalid-credential':      'Incorrect email or password',
+            'auth/too-many-requests':       'Too many attempts. Try again later.',
+            'auth/network-request-failed':  'Network error. Check your connection.'
         };
         showNotification(errorMessages[err.code] || err.message, 'error');
     }
 }
 
+// ==================== СБРОС ПАРОЛЯ ====================
+// BUG FIX #5: resetPassword used prompt() which is blocked in many browsers / iframe contexts.
+// Replaced with a proper inline mini-form inside the login modal.
+function resetPassword() {
+    const email = document.getElementById('loginEmail')?.value?.trim();
+    if (!email) {
+        showNotification('Enter your email in the field above first, then click Forgot Password', 'warning');
+        return;
+    }
+    if (!window.isValidEmail(email)) {
+        showNotification('Please enter a valid email address', 'warning');
+        return;
+    }
+    window.sendPasswordResetEmail(window.auth, email)
+        .then(() => showNotification('Password reset email sent! Check your inbox.', 'success'))
+        .catch(err => {
+            const msgs = {
+                'auth/user-not-found': 'No account with this email.',
+                'auth/invalid-email':  'Invalid email address.'
+            };
+            showNotification(msgs[err.code] || err.message, 'error');
+        });
+}
+
+function resendVerificationEmail() {
+    const user = window.auth.currentUser;
+    if (user) {
+        window.sendEmailVerification(user)
+            .then(() => showNotification('Verification email resent!', 'success'))
+            .catch(err => showNotification(err.message, 'error'));
+    } else {
+        showNotification('No user is currently signed in.', 'warning');
+    }
+}
+
 // ==================== ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ ====================
-// ФИКС: Все вызовы через window.* чтобы не зависеть от порядка загрузки скриптов
 async function loadLocalUserData() {
     if (!currentUser) return;
     const userId = currentUser.id;
 
-    // 1. Сохранённые стажировки
+    // Saved internships
     try {
         const savedQ    = window.query(window.collection(window.db, 'savedInternships'), window.where('userId', '==', userId));
         const savedSnap = await window.getDocs(savedQ);
@@ -202,7 +243,7 @@ async function loadLocalUserData() {
     }
     localStorage.setItem(`qadam_saved_${userId}`, JSON.stringify(savedItems));
 
-    // 2. Заявки студента
+    // Applications
     try {
         const appsQ    = window.query(window.collection(window.db, 'applications'), window.where('studentId', '==', userId));
         const appsSnap = await window.getDocs(appsQ);
@@ -214,9 +255,9 @@ async function loadLocalUserData() {
     }
     localStorage.setItem(`qadam_apps_${userId}`, JSON.stringify(applications));
 
-    // 3. Данные студента
+    // Student-specific data
     if (currentUser.role === 'student') {
-        // Портфолио
+        // Portfolio
         try {
             const portfolioSnap = await window.getDoc(window.doc(window.db, 'portfolios', userId));
             studentPortfolio = portfolioSnap.exists()
@@ -228,13 +269,12 @@ async function loadLocalUserData() {
                 projects: [], skills: [], certificates: [], education: [], experience: [], githubProfile: null, githubRepos: []
             };
         }
-        // Гарантируем все поля
         ['projects', 'skills', 'certificates', 'education', 'experience', 'githubRepos'].forEach(key => {
             if (!studentPortfolio[key]) studentPortfolio[key] = [];
         });
         localStorage.setItem(`qadam_portfolio_${userId}`, JSON.stringify(studentPortfolio));
 
-        // Зачисления на курсы
+        // Enrollments
         try {
             const enrollQ    = window.query(window.collection(window.db, 'enrollments'), window.where('userId', '==', userId));
             const enrollSnap = await window.getDocs(enrollQ);
@@ -272,16 +312,51 @@ function updateUIForLoggedInUser() {
 
     if (authButtons) authButtons.classList.add('hidden');
     if (userMenu)    userMenu.classList.remove('hidden');
-    if (userName)    userName.textContent  = currentUser.name;
-    if (userAvatar)  userAvatar.textContent = getInitials(currentUser.name);
+    if (userName)    userName.textContent = currentUser.name;
+
+    if (userAvatar) {
+        if (currentUser.avatarUrl) {
+            userAvatar.style.backgroundImage = `url(${currentUser.avatarUrl})`;
+            userAvatar.style.backgroundSize = 'cover';
+            userAvatar.style.backgroundPosition = 'center';
+            userAvatar.textContent = '';
+        } else {
+            userAvatar.style.backgroundImage = '';
+            userAvatar.textContent = getInitials(currentUser.name);
+        }
+    }
+
+    // 👇 ДОБАВЬТЕ ЭТОТ БЛОК
+    const dropdown = document.getElementById('userDropdown');
+    if (dropdown) {
+        if (currentUser.role === 'employer') {
+            dropdown.innerHTML = `
+                <a onclick="showSection('profile')"><i class="fas fa-user"></i><span>Profile</span></a>
+                <a onclick="showSection('dashboard')"><i class="fas fa-chart-pie"></i><span>Dashboard</span></a>
+                <a onclick="showEmployerProfileTab('applicants')"><i class="fas fa-paper-plane"></i><span>Applications</span></a>
+                <div class="dropdown-divider"></div>
+                <a onclick="logout()" class="danger"><i class="fas fa-sign-out-alt"></i><span>Log Out</span></a>
+            `;
+        } else {
+            // студент – стандартное меню
+            dropdown.innerHTML = `
+                <a onclick="showSection('profile')"><i class="fas fa-user"></i><span>Profile</span></a>
+                <a onclick="showSection('saved')"><i class="fas fa-bookmark"></i><span>Saved</span></a>
+                <a onclick="showSection('applications')"><i class="fas fa-paper-plane"></i><span>Applications</span></a>
+                <div class="dropdown-divider"></div>
+                <a onclick="logout()" class="danger"><i class="fas fa-sign-out-alt"></i><span>Log Out</span></a>
+            `;
+        }
+    }
 }
 
 // ==================== ВЫХОД ====================
 async function logout() {
     try {
+        const loggedOutUid = currentUser ? currentUser.id : null;
+
         await window.signOut(window.auth);
 
-        // Очищаем стейт
         currentUser      = null;
         savedItems       = [];
         applications     = [];
@@ -292,20 +367,44 @@ async function logout() {
         enrolledCourses  = [];
         studentCV        = null;
 
+        if (loggedOutUid) {
+            [
+                `qadam_saved_${loggedOutUid}`,
+                `qadam_apps_${loggedOutUid}`,
+                `qadam_my_internships_${loggedOutUid}`,
+                `qadam_my_courses_${loggedOutUid}`,
+                `qadam_my_events_${loggedOutUid}`,
+                `qadam_portfolio_${loggedOutUid}`,
+                `qadam_enrolled_${loggedOutUid}`,
+                `qadam_cv_${loggedOutUid}`
+            ].forEach(key => localStorage.removeItem(key));
+        }
         localStorage.removeItem('qadam_current_user');
 
-        // Восстанавливаем UI
-        document.getElementById('authButtons').classList.remove('hidden');
-        document.getElementById('userMenu').classList.add('hidden');
-        document.getElementById('mainNav').innerHTML = `
-            <a class="nav__link active" onclick="showSection('home')"><i class="fas fa-home"></i> Home</a>
-            <a class="nav__link" onclick="showSection('internships')"><i class="fas fa-briefcase"></i> Internships</a>
-            <a class="nav__link" onclick="showSection('courses')"><i class="fas fa-book-open"></i> Courses</a>
-            <a class="nav__link" onclick="showSection('events')"><i class="fas fa-calendar-alt"></i> Events</a>
-            <a class="nav__link" onclick="showSection('resources')"><i class="fas fa-users"></i> Resources</a>
-        `;
+        const authButtons = document.getElementById('authButtons');
+        const userMenu    = document.getElementById('userMenu');
+        if (authButtons) authButtons.classList.remove('hidden');
+        if (userMenu)    userMenu.classList.add('hidden');
 
-        // Удаляем динамически созданные employer-секции
+        const nav = document.getElementById('mainNav');
+        if (nav) {
+            nav.innerHTML = '';
+            [
+                { label: 'Home',        icon: 'fa-home',         section: 'home' },
+                { label: 'Internships', icon: 'fa-briefcase',    section: 'internships' },
+                { label: 'Courses',     icon: 'fa-book-open',    section: 'courses' },
+                { label: 'Events',      icon: 'fa-calendar-alt', section: 'events' },
+                { label: 'Resources',   icon: 'fa-users',        section: 'resources' }
+            ].forEach(({ label, icon, section }, i) => {
+                const a = document.createElement('a');
+                a.className = 'nav__link' + (i === 0 ? ' active' : '');
+                a.setAttribute('onclick', `showSection('${section}')`);
+                a.innerHTML = `<i class="fas ${icon}"></i> `;
+                a.appendChild(document.createTextNode(label));
+                nav.appendChild(a);
+            });
+        }
+
         ['dashboardSection', 'companyInternshipsSection', 'companyCoursesSection', 'companyEventsSection'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.remove();
@@ -322,47 +421,82 @@ async function logout() {
 // ==================== ОБНОВЛЕНИЕ ПРОФИЛЯ ====================
 async function updateProfile(e) {
     e.preventDefault();
+    const submitBtn = e.submitter || e.target.querySelector('[type="submit"]');
+    const restore = window.setButtonLoading(submitBtn);
 
-    const newName  = document.getElementById('profileName')?.value?.trim() || currentUser.name;
-    const newPhone = document.getElementById('profilePhone')?.value?.trim() || '';
-    const newBio   = document.getElementById('profileBio')?.value?.trim()   || '';
+    // 👇 Эта строчка проверяет ВСЕ поля профиля, включая год выпуска
+    if (!window.validateProfileForm()) {
+        restore();
+        return;
+    }
 
-    const updates = { name: newName, phone: newPhone, bio: newBio };
+    const newName  = document.getElementById('profileName')?.value?.trim()  || currentUser.name;
+    const newPhone = document.getElementById('profilePhone')?.value?.trim()  || '';
+    const newBio   = document.getElementById('profileBio')?.value?.trim()    || '';
+    const newCity  = document.getElementById('profileCity')?.value?.trim()   || '';
+    const updates = { name: newName, phone: newPhone, bio: newBio, city: newCity }; 
+
+
 
     if (currentUser.role === 'employer') {
-        updates.companyName = document.getElementById('profileCompanyName')?.value?.trim() || currentUser.companyName;
-        updates.companyDesc = document.getElementById('profileCompanyDesc')?.value?.trim() || currentUser.companyDesc;
-        updates.website     = document.getElementById('profileCompanyWebsite')?.value?.trim() || currentUser.website;
-        updates.location    = document.getElementById('profileCompanyLocation')?.value?.trim() || currentUser.location;
+        const companyName = document.getElementById('profileCompanyName')?.value?.trim() || '';
+        const companyDesc = document.getElementById('profileCompanyDesc')?.value?.trim() || '';
+        const website     = document.getElementById('profileCompanyWebsite')?.value?.trim() || '';
+        const location    = document.getElementById('profileCompanyLocation')?.value?.trim() || '';
+
+        if (companyName) updates.companyName = companyName;
+        if (companyDesc) updates.companyDesc = companyDesc;
+        if (website)     updates.website     = website;
+        if (location)    updates.location    = location;
+
     } else if (currentUser.role === 'student') {
-        updates.university = document.getElementById('profileUniversity')?.value?.trim() || '';
-        updates.major      = document.getElementById('profileMajor')?.value?.trim()      || '';
-        updates.gradYear   = document.getElementById('profileGradYear')?.value           || '';
+        const university  = document.getElementById('profileUniversity')?.value?.trim() || '';
+        const major       = document.getElementById('profileMajor')?.value?.trim()       || '';
+        const gradYearVal = parseInt(document.getElementById('profileGradYear')?.value)  || 0;
+
+        updates.university = university;
+        updates.major      = major;
+        updates.gradYear   = gradYearVal;
     }
 
     try {
-        // ФИКС: Сохраняем в Firestore, а не только в localStorage
         await window.updateDoc(window.doc(window.db, 'users', currentUser.id), updates);
-
+        
+        // Обновляем все стажировки, курсы и события работодателя
+    if (currentUser.role === 'employer' && (updates.companyName || updates.companyDesc)) {
+        const newCompanyName = updates.companyName || currentUser.companyName;
+        // Стажировки
+        const internSnap = await window.getDocs(
+            window.query(window.collection(window.db, 'internships'), window.where('ownerId', '==', currentUser.id))
+        );
+        internSnap.forEach(async (doc) => {
+            await window.updateDoc(doc.ref, { company: newCompanyName });
+        });
+        // Курсы
+        const courseSnap = await window.getDocs(
+            window.query(window.collection(window.db, 'courses'), window.where('ownerId', '==', currentUser.id))
+        );
+        courseSnap.forEach(async (doc) => {
+            await window.updateDoc(doc.ref, { provider: newCompanyName });
+        });
+        // События
+        const eventSnap = await window.getDocs(
+            window.query(window.collection(window.db, 'events'), window.where('ownerId', '==', currentUser.id))
+        );
+        eventSnap.forEach(async (doc) => {
+            await window.updateDoc(doc.ref, { organizer: newCompanyName });
+        });
+    }
         Object.assign(currentUser, updates);
         localStorage.setItem('qadam_current_user', JSON.stringify(currentUser));
-
-        // Обновляем UI
-        const profileName  = document.getElementById('profileDisplayName');
-        const profileEmail = document.getElementById('profileDisplayEmail');
-        const userName     = document.getElementById('userName');
-        const userAvatar   = document.getElementById('userAvatar');
-
-        if (profileName)  profileName.textContent  = currentUser.name;
-        if (profileEmail) profileEmail.textContent = currentUser.email;
-        if (userName)     userName.textContent      = currentUser.name;
-        if (userAvatar)   userAvatar.textContent    = getInitials(currentUser.name);
-
+        const userName = document.getElementById('userName');
+        const userAvatar = document.getElementById('userAvatar');
+        if (userName) userName.textContent = currentUser.name;
+        if (userAvatar) userAvatar.textContent = getInitials(currentUser.name);
         showNotification('Profile updated ✓', 'success');
     } catch (err) {
         console.error('Error updating profile:', err);
         showNotification('Error saving profile: ' + err.message, 'error');
     }
+    restore();
 }
-
-

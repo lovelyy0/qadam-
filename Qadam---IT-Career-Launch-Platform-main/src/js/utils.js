@@ -1,5 +1,4 @@
 
-// ==================== ГЛОБАЛЬНЫЙ ЛОАДЕР (создаём если нет) ====================
 (function ensureGlobalLoader() {
     if (!document.getElementById('globalLoader')) {
         const loader = document.createElement('div');
@@ -14,7 +13,6 @@
             border-top-color: #6366f1; border-radius: 50%;
             animation: spin 0.8s linear infinite;
         "></div>`;
-        // Добавляем стиль анимации если нет
         if (!document.getElementById('loaderStyle')) {
             const style = document.createElement('style');
             style.id = 'loaderStyle';
@@ -24,40 +22,41 @@
         document.body.appendChild(loader);
     }
 })();
-
+ 
 // ==================== ЛОАДЕР ====================
 function showLoader() {
     const loader = document.getElementById('globalLoader');
     if (loader) loader.style.display = 'flex';
 }
-
+ 
 function hideLoader() {
     const loader = document.getElementById('globalLoader');
     if (loader) loader.style.display = 'none';
 }
-
+ 
 // ==================== ФОРМАТИРОВАНИЕ ====================
 function formatDate(s) {
     if (!s) return 'N/A';
     return new Date(s).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 }
-
+ 
 function getDaysUntil(s) {
+    if (!s) return 0;
     return Math.max(0, Math.ceil((new Date(s) - new Date()) / (1000 * 60 * 60 * 24)));
 }
-
+ 
 function getInitials(name) {
     if (!name) return 'U';
     return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
-
+ 
 function escapeHtml(text) {
     if (text === null || text === undefined) return '';
     const div = document.createElement('div');
     div.textContent = String(text);
     return div.innerHTML;
 }
-
+ 
 function debounce(func, wait) {
     let timeout;
     return function (...args) {
@@ -65,7 +64,7 @@ function debounce(func, wait) {
         timeout = setTimeout(() => func.apply(this, args), wait);
     };
 }
-
+ 
 // ==================== УВЕДОМЛЕНИЯ ====================
 function showNotification(msg, type = 'info') {
     const icons = {
@@ -76,9 +75,9 @@ function showNotification(msg, type = 'info') {
     };
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${msg}</span>`;
+    toast.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${escapeHtml(msg)}</span>`;
     const container = document.getElementById('toastContainer');
-    if (!container) return;
+    if (!container) { console.warn('toastContainer not found'); return; }
     container.appendChild(toast);
     setTimeout(() => {
         toast.style.opacity = '0';
@@ -86,44 +85,50 @@ function showNotification(msg, type = 'info') {
         setTimeout(() => toast.remove(), 300);
     }, 3200);
 }
-
+ 
 // ==================== СТАТУСЫ ====================
 function getStatusLabel(status) {
     const labels = {
-        pending:  'Pending',
-        reviewed: 'Reviewed',
-        interview:'Interview',
-        accepted: 'Accepted',
-        rejected: 'Rejected'
+        pending:   'Pending',
+        reviewed:  'Reviewed',
+        interview: 'Interview',
+        accepted:  'Accepted',
+        rejected:  'Rejected'
     };
     return labels[status] || status;
 }
-
+ 
 function getStatusIcon(status) {
     const icons = {
-        pending:  'fa-clock',
-        reviewed: 'fa-eye',
-        interview:'fa-users',
-        accepted: 'fa-check-circle',
-        rejected: 'fa-times-circle'
+        pending:   'fa-clock',
+        reviewed:  'fa-eye',
+        interview: 'fa-users',
+        accepted:  'fa-check-circle',
+        rejected:  'fa-times-circle'
     };
     return icons[status] || 'fa-info-circle';
 }
-
+ 
 // ==================== UI УТИЛИТЫ ====================
 function toggleUserMenu() {
-    document.getElementById('userMenu').classList.toggle('open');
+    const menu = document.getElementById('userMenu');
+    if (menu) menu.classList.toggle('open');
 }
-
+ 
 function toggleMobileMenu() {
-    document.getElementById('mainNav').classList.toggle('show');
+    const nav = document.getElementById('mainNav');
+    if (nav) nav.classList.toggle('show');
 }
-
+ 
+// FIX: debouncedSearch — was referencing currentPage before state.js loaded.
+// Safe because state.js always loads before utils.js per index.html order.
 const debouncedSearch = debounce(() => {
     currentPage = 1;
-    loadInternships().catch(e => console.error(e));
+    if (typeof loadInternships === 'function') {
+        loadInternships().catch(e => console.error(e));
+    }
 }, 300);
-
+ 
 // ==================== МОДАЛКИ ====================
 function openModal(type) {
     const modal = document.getElementById(type + 'Modal');
@@ -131,21 +136,21 @@ function openModal(type) {
     modal.classList.add('show');
     document.body.style.overflow = 'hidden';
 }
-
+ 
 function closeModal(type) {
     const modal = document.getElementById(type + 'Modal');
     if (!modal) return;
     modal.classList.remove('show');
     document.body.style.overflow = '';
 }
-
+ 
 function switchModal(type) {
     closeModal(type === 'login' ? 'register' : 'login');
     openModal(type);
 }
-
+ 
 // ==================== FIRESTORE ХЕЛПЕРЫ ====================
-// ФИКС: Явно используем window.* для Firebase функций
+// FIX: fetchInternshipByIdFromFirestore defined ONLY here (removed duplicate from ui.js)
 async function fetchAllInternshipsFromFirestore() {
     try {
         const querySnapshot = await window.getDocs(window.collection(window.db, 'internships'));
@@ -159,7 +164,7 @@ async function fetchAllInternshipsFromFirestore() {
         return [];
     }
 }
-
+ 
 async function fetchInternshipByIdFromFirestore(id) {
     try {
         const docSnap = await window.getDoc(window.doc(window.db, 'internships', id));
@@ -172,3 +177,16 @@ async function fetchInternshipByIdFromFirestore(id) {
         return null;
     }
 }
+ 
+// FIX: isValidUrl defined ONCE here and exported to window.
+// validation.js also exports window.isValidUrl — last one wins, both are equivalent.
+function isValidUrl(urlString) {
+    if (!urlString || !urlString.trim()) return false;
+    try {
+        const url = new URL(urlString.startsWith('http') ? urlString : 'https://' + urlString);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+window.isValidUrl = isValidUrl;
